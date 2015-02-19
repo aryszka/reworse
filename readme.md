@@ -48,10 +48,10 @@ module.exports = function (req) {
 };
 ```
 
-A filter a is a javascript module that exports a function. The exported
-function will be executed on each request the proxy is processing. The
-filter function will receive node.js' request and response objects as
-arguments.
+A reworse filter a is a javascript module that exports a function. The
+exported function will be executed on each request the proxy is
+processing. The filter function will receive node.js' request and
+response objects as arguments.
 
 If a filter function returns a truthy value, that indicates to the proxy
 that the filter handles the current request by sending a response, and
@@ -98,4 +98,4 @@ module.exports = function (req, res) {
 ```
 
 Note: the execution order of the filters is not guaranteed, so there
-should be only zero or one filter that handles the request.
+should be only zero or one filter that handles a particular request.
