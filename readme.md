@@ -4,19 +4,18 @@ A javascript proxy with filtering.
 
 ## Usage
 
+### Installation
+
+```
+npm i reworse -g
+```
+
 ### Starting the proxy
 
 In your terminal, call:
 
 ```
-./reworse
-```
-
-In case you don't have node.js' `node` command installed in
-`/usr/local/bin`, you can start the proxy by calling:
-
-```
-node reworse
+reworse
 ```
 
 ### Starting the proxy with one or more filters
@@ -25,13 +24,13 @@ Assuming you have a filter called `my-filter.js`, you can start reworse
 like this:
 
 ```
-./reworse --filter my-filter
+reworse --filter my-filter
 ```
 
 To start reworse with multiple filters, call:
 
 ```
-./reworse --filter my-filters/filter0 --filter my-filters/filter1
+reworse --filter my-filters/filter0 --filter my-filters/filter1
 ```
 
 Each filter needs to be entered as an option flagged with `--filter`.
