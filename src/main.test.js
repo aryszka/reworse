@@ -4,9 +4,10 @@
     var assert = require("assert");
     var Flags  = require("flags");
     var main   = require("./main");
-    var Http   = require("http");
     var Url    = require("url");
     var Path   = require("path");
+    var Listener = require("./listener");
+    var Http = require("http");
 
     var withServer = function (test) {
         return function (done) {
@@ -63,7 +64,7 @@
                     this[eventName] = handler;
                 },
 
-                trigger: function (eventName) {
+                emit: function (eventName) {
                     this[eventName].apply(this, [].slice.call(arguments, 1));
                 },
 
@@ -78,11 +79,11 @@
 
     var withTestServer = function (test) {
         return withServer(function (start, done) {
-            var httpCreateServer = Http.createServer;
-            Http.createServer    = testServer();
+            var listenerCreateServer = Listener.createServer;
+            Listener.createServer    = testServer();
 
             test(start, function () {
-                Http.createServer = httpCreateServer;
+                Listener.createServer = listenerCreateServer;
                 done();
             });
         });
@@ -159,7 +160,7 @@
             };
 
             var server = start();
-            server.trigger("request", {
+            server.emit("request", {
                 method:  testRequestOptions.method,
                 headers: testRequestOptions.headers,
                 on:      function () {},
@@ -209,23 +210,23 @@
                     this[eventName] = handler;
                 },
 
-                trigger: function (eventName) {
+                emit: function (eventName) {
                     this[eventName].apply(this, [].slice.call(arguments, 1));
                 },
 
                 send: function (string) {
                     var buffer = new Buffer(string);
                     requestBuffer = Buffer.concat([requestBuffer, buffer]);
-                    this.trigger("data", buffer);
+                    this.emit("data", buffer);
                 },
 
                 end: function () {
-                    this.trigger("end");
+                    this.emit("end");
                 }
             };
 
             var server = start();
-            server.trigger("request", request, {on: function () {}});
+            server.emit("request", request, {on: function () {}});
             request.send("some");
             request.send(" ");
             request.send("data");
@@ -247,7 +248,7 @@
                     this[eventName] = handler;
                 },
 
-                trigger: function (eventName) {
+                emit: function (eventName) {
                     this[eventName].apply(this, [].slice.call(arguments, 1));
                 }
             };
@@ -281,8 +282,8 @@
             };
 
             var server = start();
-            server.trigger("request", request, response);
-            prequest.trigger("response", presponse);
+            server.emit("request", request, response);
+            prequest.emit("response", presponse);
         }),
 
         "copies response": withTestServer(function (start, done) {
@@ -320,7 +321,7 @@
                     this[eventName] = handler;
                 },
 
-                trigger: function (eventName) {
+                emit: function (eventName) {
                     this[eventName].apply(this, [].slice.call(arguments, 1));
                 }
             };
@@ -334,20 +335,20 @@
                     this[eventName] = handler;
                 },
 
-                trigger: function (eventName) {
+                emit: function (eventName) {
                     this[eventName].apply(this, [].slice.call(arguments, 1));
                 },
 
                 send: function (string) {
                     var buffer = new Buffer(string);
                     responseBuffer = Buffer.concat([responseBuffer, buffer]);
-                    this.trigger("data", buffer);
+                    this.emit("data", buffer);
                 }
             };
 
             var server = start();
-            server.trigger("request", request, response);
-            prequest.trigger("response", presponse);
+            server.emit("request", request, response);
+            prequest.emit("response", presponse);
             presponse.send("some");
             presponse.send(" ");
             presponse.send("data");
@@ -388,7 +389,7 @@
                     return filters[Path.basename(path)];
                 });
 
-                server.trigger("request", request, response);
+                server.emit("request", request, response);
             });
         }),
 
@@ -461,7 +462,7 @@
                     return filters[Path.basename(path)];
                 });
 
-                server.trigger("request", request, response);
+                server.emit("request", request, response);
             });
         }),
 

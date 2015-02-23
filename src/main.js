@@ -1,15 +1,18 @@
 (function () {
     "use strict";
 
-    var Http  = require("http");
-    var Url   = require("url");
-    var Flags = require("flags");
-    var Url   = require("url");
-    var Path  = require("path");
+    var Url      = require("url");
+    var Flags    = require("flags");
+    var Url      = require("url");
+    var Path     = require("path");
+    var Listener = require("./listener");
+    var Http     = require("http");
+    var Https    = require("https");
 
     var defaultPort = 9000;
 
-    var mapRequest = function (implementation, req, parsedUrl) {
+    var mapRequest = function (req, parsedUrl) {
+        var implementation = parsedUrl.protocol === "https:" ? Https : Http;
         var preq = implementation.request({
             method:   req.method,
             hostname: parsedUrl.hostname,
@@ -63,14 +66,14 @@
         return handled;
     };
 
-    var proxy = function (implementation, req, res, filters) {
+    var proxy = function (req, res, filters) {
         var handled = applyFilters(filters, req, res);
         if (handled) {
             return;
         }
 
         var url  = Url.parse(req.url);
-        var preq = mapRequest(implementation, req, url);
+        var preq = mapRequest(req, url);
 
         preq.on("error", function () {
             proxyError(res, url);
@@ -85,10 +88,10 @@
         var server = implementation.createServer();
 
         server.on("request", function (req, res) {
-            proxy(implementation, req, res, filters);
+            proxy(req, res, filters);
         });
 
-        server.listen(port, function () {
+        server.listen(port, function (err) {
             console.error("ready on port " + port);
             if (clb) {
                 clb(server);
@@ -135,7 +138,7 @@
         }
 
         initFlags();
-        return createServer(Http, Flags.get("port"), getFilters(requireFilter), clb);
+        return createServer(Listener, Flags.get("port"), getFilters(requireFilter), clb);
     };
 
     run.defaultPort = defaultPort;
