@@ -19,6 +19,58 @@
     var httpsTunnelConnectSocketName = "https-tunnel-connect";
     var httpsTunnelDataSocketName    = "https-tunnel-data";
 
+    var canonicalHeaders = function (message) {
+        var canonicalHeaders = [];
+        for (var i = 0; i < message.rawHeaders.length; i += 2) {
+            var key = message.rawHeaders[i];
+            var value = message.rawHeaders[i + 1];
+
+            var parts = key.split("-");
+            var canonicalParts = [];
+            for (var j = 0; j < parts.length; j++) {
+                canonicalParts[j] = (
+                    parts[j].substr(0, 1).toUpperCase() +
+                    parts[j].substr(1)
+                );
+            }
+
+            canonicalHeaders.push(canonicalParts.join("-"));
+            canonicalHeaders.push(value);
+        }
+
+        return canonicalHeaders;
+    };
+
+    var cleanHeaders = function (message) {
+        var headers = canonicalHeaders(message);
+        var newHeaders = [];
+        for (var i = 0; i < headers.length; i += 2) {
+            var key = headers[i];
+            switch (key) {
+            case "Proxy-Connection":
+            case "Strict-Transport-Security":
+                break;
+            case "Connection":
+                newHeaders.push("Connection");
+                newHeaders.push("close");
+                break;
+            default:
+                newHeaders.push(headers[i]);
+                newHeaders.push(headers[i + 1]);
+                break;
+            }
+        }
+
+        return newHeaders;
+    };
+
+    var cleanRequest = function (req) {
+        req.rawHeaders = cleanHeaders(req);
+        if (!req.method) {
+            req.method = "GET";
+        }
+    };
+
     var mkdirIfNotExists = function (dn) {
         try {
             Fs.mkdirSync(dn);
@@ -75,18 +127,92 @@
         }
     };
 
-    var copyEvent = function (source, proxy, name) {
-        source.on(name, function () {
-            var args = [].slice.call(arguments);
-            args.unshift(name);
-            proxy.emit.apply(proxy, args);
+    var logError = function (emitter, prefix) {
+        emitter.on("error", function (err) {
+            console.error(prefix, err);
         });
     };
 
     var httpFallback = function (server, port, clb) {
         server.http = Http.createServer();
-        copyEvent(server.http, server.proxy, "request");
+        logError(server.http, "http fallback server");
+
+        server.http.on("request", function (req, res) {
+            logError(req, "http fallback request");
+            logError(res, "http fallback response");
+
+            cleanRequest(req);
+            proxy.emit("request", req, res);
+        });
+
         server.http.listen(port, clb);
+    };
+
+    var isClientHello = function (data) {
+        // tls handshake byte
+        return data[0] === 22;
+    };
+
+    var isTunnelConnect = function (data) {
+        // "C" from method CONNECT
+        return data[0] === 67;
+    };
+
+    var createTcpServer = function (server) {
+        server.net = Net.createServer();
+        logError(server.net, "tcp server");
+
+        server.net.on("connection", function (socket) {
+            logError(socket, "tcp socket");
+
+            socket.once("data", function (data) {
+                switch (true) {
+                case isClientHello(data):
+                    var unixSocket = Net.connect(
+                        server.socketPaths.https
+                    );
+                    logError(unixSocket, "tcp hello unix socket");
+
+                    unixSocket.write(data);
+                    socket.pipe(unixSocket);
+                    unixSocket.pipe(socket);
+                    break;
+                case isTunnelConnect(data):
+                    var unixSocket = Net.connect(
+                        server.socketPaths.httpsTunnelConnect
+                    );
+                    logError(unixSocket, "tcp connect unix socket");
+
+                    unixSocket.write(data);
+                    socket.pipe(unixSocket);
+                    unixSocket.pipe(socket);
+                    break;
+                default:
+                    var unixSocket = Net.connect(
+                        server.socketPaths.http
+                    );
+                    logError(unixSocket, "tcp unix socket");
+
+                    unixSocket.write(data);
+                    socket.pipe(unixSocket);
+                    unixSocket.pipe(socket);
+                    break;
+                }
+            });
+        });
+    };
+
+    var createHttpServer = function (server) {
+        server.http = Http.createServer();
+        logError(server.http, "http server");
+
+        server.http.on("request", function (req, res) {
+            logError(req, "http request");
+            logError(res, "http response");
+
+            cleanRequest(req);
+            server.proxy.emit("request", req, res);
+        });
     };
 
     var createHttpsServer = function (server) {
@@ -101,24 +227,19 @@
         }
 
         server.https = Https.createServer(httpsOptions);
-        server.https.on("error", function (err) {
-            // console.error("https error", err);
-        });
+        logError(server.https, "https server");
+
         server.https.on("request", function (req, res) {
-            // console.error("original https request", req.url, req.headers);
+            logError(req, "https request");
+            logError(res, "https response");
 
-            req.on("error", function (err) {
-                // console.error("https request error", err);
-            });
-
-            res.on("error", function (err) {
-                // console.error("https response error", err);
-            });
+            cleanRequest(req);
 
             var url = Url.parse(req.url);
             if (req.headers.host) {
                 url.host = req.headers.host;
             }
+
             url.protocol = "https:";
             req.url = Url.format(url);
 
@@ -138,29 +259,20 @@
         }
 
         server.httpsTunnelData = Https.createServer(httpsOptions);
-        server.httpsTunnelData.on("error", function (err) {
-            // console.error("tunnel data error", err);
-        });
+        logError(server.httpsTunnelData, "https tunnel data server");
+
         server.httpsTunnelData.on("request", function (req, res) {
-            // console.error("original tunnel request", req.url, req.headers);
+            logError(req, "https tunnel data request");
+            logError(res, "https tunnel data response");
 
-            req.on("error", function (err) {
-                // console.error("tunnel data request error", err);
-            });
-
-            res.on("error", function (err) {
-                // console.error("tunnel response error", err);
-            });
-
-            req.on("end", function () {
-                // console.error("tunnel data request end");
-            });
-
+            cleanRequest(req);
             req.reworse = {tunnel: true};
+
             var url = Url.parse(req.url);
             if (req.headers.host) {
                 url.host = req.headers.host;
             }
+
             url.protocol = "https:";
             req.url = Url.format(url);
 
@@ -177,7 +289,6 @@
     };
 
     var printHexa = function (buffer) {
-        return;
         console.error("length:", buffer.length);
         console.error.apply(console, [].map.call(buffer, function (byte) {
             return padHexa(byte.toString(16));
@@ -186,39 +297,20 @@
 
     var createHttpsTunnelConnectServer = function (server) {
         var tunnel = Http.createServer();
-
-        tunnel.on("error", function (err) {
-            // console.error("tunnel connect error", err);
-        });
+        logError(tunnel, "https tunnel connect server");
 
         tunnel.on("upgrade", function (req, socket, head) {
-            // console.error("tunnel upgrade", head[0] === 22, head.toString(), req.headers);
-            var keepAlive = req.headers["proxy-connection"].toLowerCase() === "keep-alive";
+            logError(req, "https tunnel connect request");
+            logError(socket, "https tunnel connect socket");
+
+            var socketClosed = false;
             var unixSocketClosed = false;
-
-            socket.on("close", function () {
-                // console.error("tunnel socket closed");
-            });
-
-            req.on("error", function (err) {
-                // console.error("tunnel connect request error", err);
-            });
-
-            socket.on("error", function (err) {
-                // console.error("tunnel connect socket error", err);
-            });
 
             var unixSocket = Net.connect(
                 server.socketPaths.httpsTunnelData
             );
 
-            unixSocket.on("close", function () {
-                // console.error("tunnel unix socket closed");
-            });
-
-            unixSocket.on("error", function (err) {
-                // console.error("tunnel connect unix socket error", err);
-            });
+            logError(unixSocket, "https tunnel connect unix socket");
 
             // unixSocket.write(head);
             socket.write(
@@ -226,163 +318,41 @@
                 Proxy-Agent: reworse\r\n\r\n"
             );
 
-            req.on("data", function (data) {
-                // console.error("request data");
-                // unixSocket.write(data);
-            });
-
-            req.on("end", function () {
-                // console.error("tunnel request end");
-                // unixSocket.end();
-            });
-
             socket.on("data", function (data) {
-                // console.error("socket data");
-                // printHexa(data);
                 if (!unixSocketClosed) {
-                    // console.error("writing unix socket");
                     unixSocket.write(data);
-                } else {
-                    printHexa(data);
                 }
             });
 
             socket.on("end", function () {
-                // console.error("tunnel socket end");
+                socketClosed = true;
                 unixSocket.end();
             });
 
             unixSocket.on("data", function (data) {
-                // console.error("unix socket data");
-                // printHexa(data);
-                socket.write(data);
+                if (!socketClosed) {
+                    socket.write(data);
+                }
             });
 
             unixSocket.on("end", function () {
-                // console.error("unix socket end");
                 unixSocketClosed = true;
-                // socket.end();
             });
-
-            // req.pipe(unixSocket);
-            // socket.pipe(unixSocket);
-            // unixSocket.pipe(socket);
-        });
-
-        tunnel.on("request", function (req) {
-            // console.error("tunnel request");
-
-            req.on("error", function (err) {
-                // console.error("tunnel request error", err);
-            });
-
-            req.on("end", function () {
-                // console.error("tunnel request end");
-            });
-        });
-
-        tunnel.on("end", function () {
-            // console.error("tunnel end");
         });
 
         server.httpsTunnelConnect = tunnel;
     };
 
     var createAllServers = function (server) {
-        server.net = Net.createServer();
-        server.http = Http.createServer();
-        server.http.on("request", function (req, res) {
-            console.error("listener request", req.method);
-            delete req.headers["proxy-connection"];
-            if (!req.method) {
-                req.method = "GET";
-            }
-            server.proxy.emit("request", req, res);
-        });
+        createTcpServer(server);
+        createHttpServer(server);
         createHttpsServer(server);
         createHttpsTunnelConnectServer(server);
         createHttpsTunnelDataServer(server);
-
-        server.net.on("error", function (err) {
-            // console.error("raw server error", err);
-        });
-    };
-
-    var isClientHello = function (data) {
-        // tls handshake byte
-        return data[0] === 22;
-    };
-
-    var isTunnelConnect = function (data) {
-        // "C" from method CONNECT
-        return data[0] === 67;
     };
 
     var listenOnAll = function (server, port, clb) {
         createAllServers(server);
-        // copyEvent(server.http, server.proxy, "request");
-        // copyEvent(server.https, server.proxy, "request");
-
-        // console.error("listening");
-        server.net.on("connection", function (socket) {
-            // console.error("connection");
-
-            socket.on("close", function () {
-                // console.error("raw socket closed");
-            });
-
-            socket.once("data", function (data) {
-                switch (true) {
-                case isClientHello(data):
-                    var unixSocket = Net.connect(
-                        server.socketPaths.https
-                    );
-                    unixSocket.write(data);
-                    socket.pipe(unixSocket);
-                    unixSocket.pipe(socket);
-                    break;
-                case isTunnelConnect(data):
-                    // console.error("tunnel connect detected");
-
-                    socket.on("error", function (err) {
-                        // console.error("raw socket error", err);
-                    });
-
-                    socket.on("data", function (data) {
-                        if (data[0] === 21) {
-                            // console.error("alert detected");
-                        }
-                    });
-
-                    var unixSocket = Net.connect(
-                        server.socketPaths.httpsTunnelConnect
-                    );
-
-                    unixSocket.on("close", function () {
-                        // console.error("raw unix socket closed");
-                    });
-
-                    unixSocket.write(data);
-                    socket.pipe(unixSocket);
-                    unixSocket.pipe(socket);
-                    break;
-                default:
-                    console.error("standard connection");
-                    var unixSocket = Net.connect(
-                        server.socketPaths.http
-                    );
-                    unixSocket.write(data);
-                    socket.pipe(unixSocket);
-                    unixSocket.pipe(socket);
-                    break;
-                }
-            });
-
-            socket.on("end", function () {
-                // console.error("raw socket end");
-            });
-        });
-
         server.http.listen(server.socketPaths.http);
         server.https.listen(server.socketPaths.https);
         server.httpsTunnelConnect.listen(server.socketPaths.httpsTunnelConnect);
@@ -461,5 +431,7 @@
         return server.proxy;
     };
 
-    module.exports.createServer = create;
+    exports.createServer = create;
+    exports.cleanHeaders = cleanHeaders;
+    exports.logError     = logError;
 })();

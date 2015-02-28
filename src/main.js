@@ -4,6 +4,8 @@
     var HttpParser = require("http-parser-js");
     process.binding("http_parser").HTTPParser = HttpParser.HTTPParser;
 
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+
     var Url      = require("url");
     var Flags    = require("flags");
     var Url      = require("url");
@@ -14,57 +16,83 @@
 
     var defaultPort = 9000;
 
+    var rawHeaders = function (list) {
+        var headers = {};
+        for (var i = 0; i < list.length; i += 2) {
+            headers[list[i]] = list[i + 1];
+        }
+
+        return headers;
+    };
+
     var mapRequest = function (req, parsedUrl) {
         var implementation = parsedUrl.protocol === "https:" ? Https : Http;
-        // console.error("request", parsedUrl, {
-        //     method:   req.method,
-        //     hostname: parsedUrl.hostname,
-        //     port:     parsedUrl.port,
-        //     path:     parsedUrl.path,
-        //     headers:  req.headers
-        // });
-        console.error("sending request", req.method, {
-            method:   req.method,
-            hostname: parsedUrl.hostname,
-            port:     parsedUrl.port,
-            path:     parsedUrl.path,
-            headers:  req.headers
-        });
+        console.error("requesting", req.rawHeaders);
         var preq = implementation.request({
             method:   req.method,
             hostname: parsedUrl.hostname,
             port:     parsedUrl.port,
             path:     parsedUrl.path,
-            headers:  req.headers
+            headers:  rawHeaders(req.rawHeaders)
         });
 
+        Listener.logError(preq, "proxy request");
+
         req.on("data", function (data) {
-            // console.error("request data");
-            // console.error(data.toString());
             preq.write(data, "binary");
         });
 
         req.on("end", function () {
-            console.error("request end triggered");
             preq.end();
         });
 
         return preq;
     };
 
+    var noContent = function (res) {
+        return res.headers["content-length"] === 0;
+    };
+
+    var noDataStatus = function (res) {
+        switch (res.statusCode) {
+        case 204:
+        case 205:
+        case 304:
+            return true;
+        default:
+            return false;
+        }
+    };
+
+    var noData = function (res) {
+        if (noContent(res)) {
+            return true;
+        }
+
+        if (noDataStatus(res)) {
+            return true;
+        }
+
+        return false;
+    };
+
     var mapResponse = function (pres, res) {
-        delete pres.headers["strict-transport-security"];
-        res.writeHead(pres.statusCode, pres.headers);
+        console.error("received", pres.statusCode, pres.rawHeaders);
+        pres.rawHeaders = Listener.cleanHeaders(pres);
+        res.writeHead(pres.statusCode, rawHeaders(pres.rawHeaders));
 
-        pres.on("data", function (data) {
-            // console.error("response data");
-            // console.error(data.toString());
-            res.write(data, "binary");
-        });
-
-        pres.on("end", function () {
+        if (noData(pres)) {
+            console.error("no data");
             res.end();
-        });
+        } else {
+            pres.on("data", function (data) {
+                res.write(data, "binary");
+            });
+
+            pres.on("end", function () {
+                res.end();
+            });
+        }
     };
 
     var proxyError = function (res, url) {
@@ -75,15 +103,6 @@
 
     var applyFilters = function (filters, req, res) {
         var handled = false;
-
-        var logErr = function (err) {
-            console.error("main request error", err);
-        };
-        req.on("error", logErr);
-        res.on("error", function (err) {
-            console.error("main response error", err);
-        });
-
         filters.forEach(function (filter) {
             handled = filter(req, res, handled) || handled;
         });
@@ -92,7 +111,6 @@
     };
 
     var proxy = function (req, res, filters) {
-        // console.error("proxying");
         var handled = applyFilters(filters, req, res);
         if (handled) {
             return;
@@ -102,23 +120,18 @@
         var preq = mapRequest(req, url);
 
         preq.on("error", function (err) {
-            // console.error("proxy request error", err);
             proxyError(res, url);
         });
 
         preq.on("response", function (pres) {
-            console.error("response");
-            pres.on("error", function (err) {
-                // console.error("proxy response error", err);
-            });
-
+            Listener.logError(pres);
             mapResponse(pres, res);
         });
 
-        // if (req.reworse && req.reworse.tunnel) {
-            // console.error("sending end");
+        if (req.reworse && req.reworse.tunnel) {
+            // todo: not good when posting data
             preq.end();
-        // }
+        }
     };
 
     var createServer = function (implementation, port, filters, clb) {
@@ -129,7 +142,6 @@
         });
 
         server.listen(port, function (err) {
-            console.error("ready on port " + port);
             if (clb) {
                 clb(server);
             }
@@ -158,7 +170,6 @@
             try {
                 filter = requireFilter(path);
             } catch (err) {
-                console.error("invalid filter:", path, "(" + err.message + ")");
                 process.exit(1);
             }
 
