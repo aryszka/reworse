@@ -167,21 +167,21 @@
 
             socket.once("data", function (data) {
                 switch (true) {
-                case isClientHello(data):
-                    var unixSocket = Net.connect(
-                        server.socketPaths.https
-                    );
-                    logError(unixSocket, "tcp hello unix socket");
-
-                    unixSocket.write(data);
-                    socket.pipe(unixSocket);
-                    unixSocket.pipe(socket);
-                    break;
                 case isTunnelConnect(data):
                     var unixSocket = Net.connect(
                         server.socketPaths.httpsTunnelConnect
                     );
                     logError(unixSocket, "tcp connect unix socket");
+
+                    unixSocket.write(data);
+                    socket.pipe(unixSocket);
+                    unixSocket.pipe(socket);
+                    break;
+                case isClientHello(data):
+                    var unixSocket = Net.connect(
+                        server.socketPaths.https
+                    );
+                    logError(unixSocket, "tcp hello unix socket");
 
                     unixSocket.write(data);
                     socket.pipe(unixSocket);

@@ -27,7 +27,6 @@
 
     var mapRequest = function (req, parsedUrl) {
         var implementation = parsedUrl.protocol === "https:" ? Https : Http;
-        console.error("requesting", req.rawHeaders);
         var preq = implementation.request({
             method:   req.method,
             hostname: parsedUrl.hostname,
@@ -77,12 +76,10 @@
     };
 
     var mapResponse = function (pres, res) {
-        console.error("received", pres.statusCode, pres.rawHeaders);
         pres.rawHeaders = Listener.cleanHeaders(pres);
         res.writeHead(pres.statusCode, rawHeaders(pres.rawHeaders));
 
         if (noData(pres)) {
-            console.error("no data");
             res.end();
         } else {
             pres.on("data", function (data) {
@@ -128,7 +125,8 @@
             mapResponse(pres, res);
         });
 
-        if (req.reworse && req.reworse.tunnel) {
+        if (req.reworse && req.reworse.tunnel ||
+            req.headers.connection === "keep-alive") {
             // todo: not good when posting data
             preq.end();
         }
