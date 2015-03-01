@@ -128,6 +128,7 @@
     };
 
     var logError = function (emitter, prefix) {
+        // todo: log these only in verbose mode
         emitter.on("error", function (err) {
             console.error(prefix, err);
         });
@@ -280,26 +281,11 @@
         });
     };
 
-    var padHexa = function (hexa) {
-        if (hexa.length === 2) {
-            return hexa;
-        }
-
-        return "0" + hexa;
-    };
-
-    var printHexa = function (buffer) {
-        console.error("length:", buffer.length);
-        console.error.apply(console, [].map.call(buffer, function (byte) {
-            return padHexa(byte.toString(16));
-        }));
-    };
-
     var createHttpsTunnelConnectServer = function (server) {
         var tunnel = Http.createServer();
         logError(tunnel, "https tunnel connect server");
 
-        tunnel.on("upgrade", function (req, socket, head) {
+        tunnel.on("connect", function (req, socket, head) {
             logError(req, "https tunnel connect request");
             logError(socket, "https tunnel connect socket");
 
@@ -352,7 +338,6 @@
     };
 
     var listenOnAll = function (server, port, clb) {
-        createAllServers(server);
         server.http.listen(server.socketPaths.http);
         server.https.listen(server.socketPaths.https);
         server.httpsTunnelConnect.listen(server.socketPaths.httpsTunnelConnect);
@@ -367,6 +352,7 @@
             httpFallback(server, port, clb);
         } else {
             server.socketPaths = socketPaths;
+            createAllServers(server);
             listenOnAll(server, port, clb);
         }
     };

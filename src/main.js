@@ -1,8 +1,8 @@
 (function () {
     "use strict";
 
-    var HttpParser = require("http-parser-js");
-    process.binding("http_parser").HTTPParser = HttpParser.HTTPParser;
+    // var HttpParser = require("http-parser-js");
+    // process.binding("http_parser").HTTPParser = HttpParser.HTTPParser;
 
     process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
@@ -27,6 +27,8 @@
 
     var mapRequest = function (req, parsedUrl) {
         var implementation = parsedUrl.protocol === "https:" ? Https : Http;
+        var contentLength = parseInt(req.headers["content-length"], 10);
+        var receivedLength = 0;
         var preq = implementation.request({
             method:   req.method,
             hostname: parsedUrl.hostname,
@@ -35,10 +37,14 @@
             headers:  rawHeaders(req.rawHeaders)
         });
 
-        Listener.logError(preq, "proxy request");
+        Listener.logError(preq, parsedUrl.protocol, "proxy request");
 
         req.on("data", function (data) {
             preq.write(data, "binary");
+            receivedLength += data.length;
+            if (receivedLength >= contentLength) {
+                preq.end();
+            }
         });
 
         req.on("end", function () {
@@ -125,9 +131,12 @@
             mapResponse(pres, res);
         });
 
-        if (req.reworse && req.reworse.tunnel ||
-            req.headers.connection === "keep-alive") {
-            // todo: not good when posting data
+        // todo: filters won't receive it this way, emit event instead
+        if (preq.method !== "POST" &&
+            preq.method !== "PUT" &&
+            (req.reworse && req.reworse.tunnel ||
+            req.headers.connection === "keep-alive") ||
+            parseInt(req.headers["content-length"], 10) === 0) {
             preq.end();
         }
     };
