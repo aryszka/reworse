@@ -128,7 +128,8 @@
     };
 
     var logError = function (emitter, prefix) {
-        // todo: log these only in verbose mode
+        // todo: log these only in verbose mode,
+        // if ECONNRESET on tcp socket
         emitter.on("error", function (err) {
             console.error(prefix, err);
         });

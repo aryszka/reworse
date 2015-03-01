@@ -5,7 +5,7 @@ var testGlob = "src/**/*.test.js";
 gulp.task("test", function () {
     var mocha = require("gulp-mocha");
     var mochaOptions = {
-        ui: "exports",
+        ui: "tdd",
         bail: true
     };
     gulp.src(testGlob)

@@ -29,6 +29,7 @@
         var implementation = parsedUrl.protocol === "https:" ? Https : Http;
         var contentLength = parseInt(req.headers["content-length"], 10);
         var receivedLength = 0;
+        var requestEndCalled = false;
         var preq = implementation.request({
             method:   req.method,
             hostname: parsedUrl.hostname,
@@ -42,13 +43,17 @@
         req.on("data", function (data) {
             preq.write(data, "binary");
             receivedLength += data.length;
-            if (receivedLength >= contentLength) {
+            if (!requestEndCalled && contentLength > 0 && receivedLength >= contentLength) {
                 preq.end();
+                requestEndCalled = true;
             }
         });
 
         req.on("end", function () {
-            preq.end();
+            if (!requestEndCalled && contentLength > 0) {
+                preq.end();
+                requestEndCalled = true;
+            }
         });
 
         return preq;
@@ -177,6 +182,7 @@
             try {
                 filter = requireFilter(path);
             } catch (err) {
+                console.error("invalid filter:", path);
                 process.exit(1);
             }
 
@@ -197,6 +203,7 @@
     };
 
     run.defaultPort = defaultPort;
+    run.rawHeaders  = rawHeaders;
 
     module.exports = run;
 })();
