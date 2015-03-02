@@ -1,13 +1,14 @@
 suite("main", function () {
     "use strict";
 
-    var assert = require("assert");
-    var Flags  = require("flags");
-    var main   = require("./main");
-    var Url    = require("url");
-    var Path   = require("path");
+    var assert   = require("assert");
+    var Flags    = require("flags");
+    var main     = require("./main");
+    var Url      = require("url");
+    var Path     = require("path");
     var Listener = require("./listener");
-    var Http = require("http");
+    var Http     = require("http");
+    var mockArgs = require("./mock-args");
 
     var withServer = function (test) {
         return function (done) {
@@ -43,18 +44,6 @@ suite("main", function () {
             console.error = stderr;
             done();
         };
-    };
-
-    var mockArgs = function (args, test) {
-        args = args || [];
-
-        process.argv = process.argv
-            .slice(0, 2)
-            .concat(args);
-
-        if (test) {
-            test();
-        }
     };
 
     var testServer = function () {
@@ -156,7 +145,11 @@ suite("main", function () {
             Http.request = httpRequest;
 
             done();
-            return {on: function () {}};
+
+            return {
+                on:  function () {},
+                end: function () {}
+            };
         };
 
         var server = start();
@@ -250,6 +243,8 @@ suite("main", function () {
         };
 
         var prequest = {
+            end: function () {},
+
             on: function (eventName, handler) {
                 this[eventName] = handler;
             },
@@ -327,6 +322,8 @@ suite("main", function () {
         };
 
         var prequest = {
+            end: function () {},
+
             on: function (eventName, handler) {
                 this[eventName] = handler;
             },
@@ -396,7 +393,10 @@ suite("main", function () {
             assert(filtersCalled === 2);
             Http.request = httpRequest;
             done();
-            return {on: function () {}};
+            return {
+                on:  function () {},
+                end: function () {}
+            };
         };
 
         mockArgs(["--filter", "filter0", "--filter", "filter1"], function () {

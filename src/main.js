@@ -17,6 +17,7 @@
     var defaultPort = 9000;
 
     var rawHeaders = function (list) {
+        list = Listener.canonicalHeaders(list);
         var headers = {};
         for (var i = 0; i < list.length; i += 2) {
             headers[list[i]] = list[i + 1];
@@ -27,7 +28,10 @@
 
     var mapRequest = function (req, parsedUrl) {
         var implementation = parsedUrl.protocol === "https:" ? Https : Http;
-        var contentLength = parseInt(req.headers["content-length"], 10);
+        var contentLength = 0;
+        if (req.headers["content-length"]) {
+            contentLength = parseInt(req.headers["content-length"], 10);
+        }
         var receivedLength = 0;
         var requestEndCalled = false;
         var preq = implementation.request({
@@ -137,11 +141,14 @@
         });
 
         // todo: filters won't receive it this way, emit event instead
-        if (preq.method !== "POST" &&
-            preq.method !== "PUT" &&
-            (req.reworse && req.reworse.tunnel ||
-            req.headers.connection === "keep-alive") ||
-            parseInt(req.headers["content-length"], 10) === 0) {
+        // if (preq.method !== "POST" &&
+        //     preq.method !== "PUT" ||
+        //     (req.reworse && req.reworse.tunnel ||
+        //     req.headers.connection === "keep-alive") ||
+        //     parseInt(req.headers["content-length"], 10) === 0) {
+        //     preq.end();
+        // }
+        if (preq.method !== "POST" && preq.method !== "PUT") {
             preq.end();
         }
     };

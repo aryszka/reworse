@@ -6,7 +6,10 @@ gulp.task("test", function () {
     var mocha = require("gulp-mocha");
     var mochaOptions = {
         ui: "tdd",
-        bail: true
+        bail: true,
+
+        // todo: fix this to apply only to full tests
+        slow: 300
     };
     gulp.src(testGlob)
         .pipe(mocha(mochaOptions));

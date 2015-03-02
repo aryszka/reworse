@@ -19,11 +19,11 @@
     var httpsTunnelConnectSocketName = "https-tunnel-connect";
     var httpsTunnelDataSocketName    = "https-tunnel-data";
 
-    var canonicalHeaders = function (message) {
+    var canonicalHeaders = function (rawHeaders) {
         var canonicalHeaders = [];
-        for (var i = 0; i < message.rawHeaders.length; i += 2) {
-            var key = message.rawHeaders[i];
-            var value = message.rawHeaders[i + 1];
+        for (var i = 0; i < rawHeaders.length; i += 2) {
+            var key   = rawHeaders[i];
+            var value = rawHeaders[i + 1];
 
             var parts = key.split("-");
             var canonicalParts = [];
@@ -42,7 +42,7 @@
     };
 
     var cleanHeaders = function (message) {
-        var headers = canonicalHeaders(message);
+        var headers = canonicalHeaders(message.rawHeaders);
         var newHeaders = [];
         for (var i = 0; i < headers.length; i += 2) {
             var key = headers[i];
@@ -213,6 +213,15 @@
             logError(res, "http response");
 
             cleanRequest(req);
+
+            var url = Url.parse(req.url);
+            if (req.headers.host) {
+                url.host = req.headers.host;
+            }
+
+            url.protocol = "http:";
+            req.url = Url.format(url);
+
             server.proxy.emit("request", req, res);
         });
     };
@@ -418,7 +427,8 @@
         return server.proxy;
     };
 
-    exports.createServer = create;
-    exports.cleanHeaders = cleanHeaders;
-    exports.logError     = logError;
+    exports.createServer     = create;
+    exports.cleanHeaders     = cleanHeaders;
+    exports.canonicalHeaders = canonicalHeaders;
+    exports.logError         = logError;
 })();
