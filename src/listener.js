@@ -321,6 +321,10 @@
             });
 
             socket.on("end", function () {
+
+                // otherwise unable to close nodejs server
+                socket.destroy();
+
                 socketClosed = true;
                 unixSocket.end();
             });
