@@ -3,7 +3,7 @@
 
     // todo: better var names
 
-    var Cert   = require("./cert");
+    var Cert   = require("./fake-cert");
     var Events = require("events");
     var Fs     = require("fs");
     var Http   = require("http");
