@@ -20,8 +20,16 @@ suite("main spec", function () {
         TestHttp.testGetRoundtrip(Http, 8989, done);
     });
 
+    test("http post roundtrip", function (done) {
+        TestHttp.testPostRoundtrip(Http, 8989, done);
+    });
+
     test("https get roundtrip", function (done) {
         TestHttp.testGetRoundtrip(Https, 4545, done);
+    });
+
+    test("https get roundtrip", function (done) {
+        TestHttp.testPostRoundtrip(Https, 4545, done);
     });
 
     test("http keep-alive session", function (done) {
@@ -33,6 +41,10 @@ suite("main spec", function () {
     });
 
     test("https get roundtrip over tunneling", function (done) {
-        TestHttp.testTunneling(4545, done);
+        TestHttp.testGetTunneling(4545, done);
+    });
+
+    test("https post roundtrip over tunneling", function (done) {
+        TestHttp.testPostTunneling(4545, done);
     });
 });

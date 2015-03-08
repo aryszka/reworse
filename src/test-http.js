@@ -1,13 +1,13 @@
 (function () {
     "use strict";
 
-    var Util = require("util");
-    var Http = require("http");
-    var Https = require("https");
-    var Tls = require("tls");
-    var main = require("./main");
+    var Util   = require("util");
+    var Http   = require("http");
+    var Https  = require("https");
+    var Tls    = require("tls");
     var assert = require("assert");
-    var Cert = require("./fake-cert");
+    var main   = require("./main");
+    var Cert   = require("./fake-cert");
 
     var ProxyAgent = function (options) {
         Https.Agent.call(this, options);
@@ -23,7 +23,6 @@
             host:    this.options.host,
             port:    this.options.port,
             method:  "connect",
-            path:    requestHost,
             headers: {host: requestHost}
         });
 
@@ -76,16 +75,12 @@
     Tunneling.Agent   = ProxyAgent;
     Tunneling.request = Https.request;
 
-    Tunneling.createServer = function (options) {
-        return new Tunneling(options);
-    };
-
     var assertHeaders = function (expect, test) {
-        var expectObject = main.rawHeaders(expect);
-        var testObject   = main.rawHeaders(test);
+        expect = main.rawHeaders(expect);
+        test   = main.rawHeaders(test);
 
-        for (var key in expectObject) {
-            assert(expectObject[key] === testObject[key]);
+        for (var key in expect) {
+            assert(expect[key] === test[key]);
         }
     };
 
@@ -115,7 +110,7 @@
         );
     };
 
-    var createTestServer = function (options) {
+    var createTestService = function (options) {
         options = applyDefaults(options, {
             Implementation: Http.Server,
             response: applyDefaults(options.response, {
@@ -126,16 +121,16 @@
             })
         });
 
-        var server;
+        var service;
         var requestCounter = 0;
 
         if (isHttps(options.Implementation)) {
-            server = new options.Implementation(Cert);
+            service = new options.Implementation(Cert);
         } else {
-            server = new options.Implementation;
+            service = new options.Implementation;
         }
 
-        server.on("request", function (req, res) {
+        service.on("request", function (req, res) {
             var body = getResponseBody(options.response, requestCounter++);
 
             res.writeHeader(options.response.statusCode, {
@@ -154,29 +149,34 @@
             setTimeout(function () {
                 res.end();
             });
+
+            var requestBody = "";
+
+            req.on("data", function (data) {
+                requestBody += data.toString();
+            });
+
+            req.on("end", function () {
+                this.emit("test-request-end", requestBody);
+            }.bind(this));
         });
 
-        return server;
+        return service;
     };
 
     var testRequest = function (options) {
         options = applyDefaults(options, {
             Implementation: Http.Server,
+            hostname:       "localhost",
+            port:           8989,
             method:         "GET",
-            port:           main.defaultPort,
-            headers:        [],
-            agent:          undefined
+            path:           "/",
+            agent:          undefined,
+            headers:        []
         });
+        options.headers = main.rawHeaders(options.headers);
 
-        var req = options.Implementation.request({
-            method:   options.method,
-            hostname: "localhost",
-            port:     options.port,
-            path:     "/",
-            headers:  main.rawHeaders(options.headers),
-            agent:    options.agent
-        });
-
+        var req = options.Implementation.request(options);
         req.on("response", function (res) {
             var body = "";
 
@@ -189,13 +189,12 @@
             });
         });
 
-        req.end();
         return req;
     };
 
-    var testDone = function (server, testServer, done) {
-        testServer.close(function () {
-            server.close(function () {
+    var testDone = function (proxy, service, done) {
+        service.close(function () {
+            proxy.close(function () {
                 done();
             });
         });
@@ -204,22 +203,28 @@
     var testRoundtrip = function (options) {
         options = applyDefaults(options, {
             Implementation: Http,
-            port:           8989,
+            servicePort:    8989,
+            method:         "GET",
             body:           [],
             bodies:         [],
+            requestBody:    [],
             done:           function () {},
             agent:          undefined,
             requestCount:   1
         });
 
-        main(function (server) {
-            var headers = [
-                "User-Agent", "reworse test",
-                "Host",       "localhost:" + options.port,
-                "Accept",     "*/*"
-            ];
+        options = applyDefaults(options, {
+            requestPort: options.servicePort,
 
-            var testServer = createTestServer({
+            headers: [
+                "User-Agent", "reworse test",
+                "Host",       "localhost:" + options.servicePort,
+                "Accept",     "*/*"
+            ]
+        });
+
+        main.run(function (proxy) {
+            var service = createTestService({
                 Implementation: options.Implementation.Server,
 
                 response: {
@@ -233,16 +238,17 @@
             var requestDone = function () {
                 requestCounter--;
                 if (requestCounter === 0) {
-                    testDone(server, testServer, options.done);
+                    testDone(proxy, service, options.done);
                 }
             };
 
             var request = function (index) {
                 var req = testRequest({
                     Implementation: options.Implementation,
-                    port:           options.port,
-                    headers:        headers,
-                    agent:          options.agent
+                    port:           options.requestPort,
+                    headers:        options.headers,
+                    agent:          options.agent,
+                    method:         options.method
                 });
 
                 var expectedBody = getResponseBody(options, index);
@@ -261,15 +267,34 @@
                     assert(body === expectedBody.join(""));
                     requestDone();
                 });
+
+                options.requestBody.forEach(function (part) {
+                    req.write(part);
+                });
+
+                req.end();
             };
 
-            testServer.on("request", function (req) {
-                assert(req.method === "GET");
+            var requestBodyLength = options.requestBody.join("").length;
+
+            if (requestBodyLength) {
+                options.headers.push("Content-Type");
+                options.headers.push("text/plain");
+                options.headers.push("Content-Length");
+                options.headers.push(String(requestBodyLength));
+            }
+
+            service.on("request", function (req) {
+                assert(req.method === options.method);
                 assert(req.url === "/");
-                assertHeaders(headers, req.rawHeaders);
+                assertHeaders(options.headers, req.rawHeaders);
             });
 
-            testServer.listen(options.port, function () {
+            service.on("test-request-end", function (requestBody) {
+                assert(requestBody === options.requestBody.join(""));
+            });
+
+            service.listen(options.servicePort, function () {
                 var requestCount = options.requestCount;
                 for (var i = 0; i < requestCount; i++) {
                     request(i);
@@ -278,15 +303,41 @@
         });
     };
 
-    var testGetRoundtrip = function (Implementation, port, done) {
+    var testGetRoundtrip = function (Implementation, servicePort, done) {
         testRoundtrip({
             Implementation: Implementation,
-            port:           port,
-            done:           done
+            servicePort:    servicePort,
+            requestPort:    main.defaultPort,
+            done:           done,
+
+            body: [
+                "response part 0",
+                "response part 1"
+            ]
         });
     };
 
-    var testKeepAliveSession = function (Implementation, port, done) {
+    var testPostRoundtrip = function (Implementation, servicePort, done) {
+        testRoundtrip({
+            Implementation: Implementation,
+            servicePort:    servicePort,
+            requestPort:    main.defaultPort,
+            done:           done,
+            method:         "POST",
+
+            requestBody: [
+                "request part 0",
+                "request part 1"
+            ],
+
+            body: [
+                "response part 0",
+                "response part 1"
+            ]
+        });
+    };
+
+    var testKeepAliveSession = function (Implementation, servicePort, done) {
         // note:
         // the current version strips off keep-alive
         // headers, but it still should be able to
@@ -294,7 +345,8 @@
 
         testRoundtrip({
             Implementation: Implementation,
-            port:           port,
+            servicePort:    servicePort,
+            requestPort:    main.defaultPort,
             done:           done,
             requestCount:   3,
 
@@ -317,10 +369,10 @@
         });
     };
 
-    var testTunneling = function (port, done) {
+    var testGetTunneling = function (servicePort, done) {
         testRoundtrip({
             Implementation: Tunneling,
-            port:           port,
+            servicePort:    servicePort,
             done:           done,
 
             agent: new Tunneling.Agent({
@@ -335,7 +387,33 @@
         });
     };
 
-    module.exports.testGetRoundtrip     = testGetRoundtrip;
-    module.exports.testKeepAliveSession = testKeepAliveSession;
-    module.exports.testTunneling        = testTunneling;
+    var testPostTunneling = function (servicePort, done) {
+        testRoundtrip({
+            Implementation: Tunneling,
+            servicePort:    servicePort,
+            done:           done,
+            method:         "POST",
+
+            agent: new Tunneling.Agent({
+                host: "localhost",
+                port: main.defaultPort
+            }),
+
+            requestBody: [
+                "request part 0",
+                "request part 1"
+            ],
+
+            body: [
+                "response part 0",
+                "response part 1"
+            ]
+        });
+    };
+
+    exports.testGetRoundtrip     = testGetRoundtrip;
+    exports.testPostRoundtrip    = testPostRoundtrip;
+    exports.testKeepAliveSession = testKeepAliveSession;
+    exports.testGetTunneling     = testGetTunneling;
+    exports.testPostTunneling    = testPostTunneling;
 })();

@@ -211,6 +211,7 @@
 
     run.defaultPort = defaultPort;
     run.rawHeaders  = rawHeaders;
+    run.run = run;
 
     module.exports = run;
 })();

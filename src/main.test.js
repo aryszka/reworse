@@ -15,7 +15,7 @@ suite("main", function () {
             var server;
             test(
                 function (requireFilter) {
-                    server = main(requireFilter || require, function () {});
+                    server = main.run(requireFilter || require, function () {});
                     return server;
                 },
                 function () {
@@ -89,7 +89,7 @@ suite("main", function () {
     });
 
     test("starts/stops", function (done) {
-        main(function (server) {
+        main.run(function (server) {
             server.close(function () {
                 done();
             });
