@@ -16,8 +16,8 @@
 
     Util.inherits(ProxyAgent, Https.Agent);
 
-    ProxyAgent.prototype.createConnection = function (requestOptions, clb) {
-        var requestHost = requestOptions.host + ":" + requestOptions.port;
+    ProxyAgent.prototype.createConnection = function (options, clb) {
+        var requestHost = options.host + ":" + options.port;
 
         var req = Http.request({
             host:    this.options.host,
@@ -72,6 +72,7 @@
 
     Util.inherits(Tunneling, Https.Server);
 
+    Tunneling.Server  = Tunneling;
     Tunneling.Agent   = ProxyAgent;
     Tunneling.request = Https.request;
 
@@ -96,12 +97,39 @@
         );
     };
 
+    var applyDefaults = function (values, defaults) {
+        values = values || {};
+        for (var key in defaults) {
+            if (!(key in values)) {
+                values[key] = defaults[key];
+            }
+        }
+
+        return values;
+    };
+
+    var isHttps = function (Implementation) {
+        return (
+            Implementation.prototype instanceof Https.Server ||
+            Implementation === Https.Server
+        );
+    };
+
     var createTestServer = function (options) {
+        options = applyDefaults(options, {
+            Implementation: Http.Server,
+            response: applyDefaults(options.response, {
+                statusCode:  200,
+                contentType: "text/plain",
+                body:        [],
+                bodies:      []
+            })
+        });
+
         var server;
         var requestCounter = 0;
 
-        if (options.Implementation.prototype instanceof Https.Server ||
-            options.Implementation === Https.Server) {
+        if (isHttps(options.Implementation)) {
             server = new options.Implementation(Cert);
         } else {
             server = new options.Implementation;
@@ -110,8 +138,8 @@
         server.on("request", function (req, res) {
             var body = getResponseBody(options.response, requestCounter++);
 
-            res.writeHeader(options.response.statusCode || 200, {
-                "Content-Type":   options.response.contentType || "text/plain",
+            res.writeHeader(options.response.statusCode, {
+                "Content-Type":   options.response.contentType,
                 "Content-Length": body && String(body.join("").length) || "0"
             });
 
@@ -132,12 +160,20 @@
     };
 
     var testRequest = function (options) {
+        options = applyDefaults(options, {
+            Implementation: Http.Server,
+            method:         "GET",
+            port:           main.defaultPort,
+            headers:        [],
+            agent:          undefined
+        });
+
         var req = options.Implementation.request({
-            method:   options.method || "GET",
+            method:   options.method,
             hostname: "localhost",
-            port:     options.port || main.defaultPort,
+            port:     options.port,
             path:     "/",
-            headers:  main.rawHeaders(options.headers || []),
+            headers:  main.rawHeaders(options.headers),
             agent:    options.agent
         });
 
@@ -166,6 +202,16 @@
     };
 
     var testRoundtrip = function (options) {
+        options = applyDefaults(options, {
+            Implementation: Http,
+            port:           8989,
+            body:           [],
+            bodies:         [],
+            done:           function () {},
+            agent:          undefined,
+            requestCount:   1
+        });
+
         main(function (server) {
             var headers = [
                 "User-Agent", "reworse test",
@@ -174,7 +220,7 @@
             ];
 
             var testServer = createTestServer({
-                Implementation: options.Implementation.Server || options.Implementation,
+                Implementation: options.Implementation.Server,
 
                 response: {
                     body:   options.body,
@@ -224,7 +270,7 @@
             });
 
             testServer.listen(options.port, function () {
-                var requestCount = options.requestCount || 1;
+                var requestCount = options.requestCount;
                 for (var i = 0; i < requestCount; i++) {
                     request(i);
                 }
