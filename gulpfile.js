@@ -9,7 +9,7 @@ gulp.task("test", function () {
         bail: true,
 
         // todo: fix this to apply only to full tests
-        slow: 300
+        slow: 540
     };
     gulp.src(testGlob)
         .pipe(mocha(mochaOptions));

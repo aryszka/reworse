@@ -1,74 +1,35 @@
 (function () {
     "use strict";
 
-    // todo: better var names
+    var Events   = require("events");
+    var FakeCert = require("./fake-cert");
+    var Fs       = require("fs");
+    var Http     = require("http");
+    var Https    = require("https");
+    var Net      = require("net");
+    var Path     = require("path");
+    var Url      = require("url");
+    var Util     = require("util");
 
-    var Cert   = require("./fake-cert");
-    var Events = require("events");
-    var Fs     = require("fs");
-    var Http   = require("http");
-    var Https  = require("https");
-    var Net    = require("net");
-    var Path   = require("path");
-    var Url    = require("url");
-    var Util   = require("util");
+    var defaultSocketDir        = ".tmp";
+    var httpSocketName          = "http";
+    var httpsSocketName         = "https";
+    var tunnelConnectSocketName = "https-tunnel-connect";
+    var tunnelDataSocketName    = "https-tunnel-data";
 
-    var defaultSocketDir             = ".tmp";
-    var httpSocketName               = "http";
-    var httpsSocketName              = "https";
-    var httpsTunnelConnectSocketName = "https-tunnel-connect";
-    var httpsTunnelDataSocketName    = "https-tunnel-data";
-
-    var canonicalHeaders = function (rawHeaders) {
-        var canonicalHeaders = [];
-        for (var i = 0; i < rawHeaders.length; i += 2) {
-            var key   = rawHeaders[i];
-            var value = rawHeaders[i + 1];
-
-            var parts = key.split("-");
-            var canonicalParts = [];
-            for (var j = 0; j < parts.length; j++) {
-                canonicalParts[j] = (
-                    parts[j].substr(0, 1).toUpperCase() +
-                    parts[j].substr(1)
-                );
-            }
-
-            canonicalHeaders.push(canonicalParts.join("-"));
-            canonicalHeaders.push(value);
-        }
-
-        return canonicalHeaders;
+    var Interface = function () {
+        Events.EventEmitter.call(this);
     };
 
-    var cleanHeaders = function (message) {
-        var headers = canonicalHeaders(message.rawHeaders);
-        var newHeaders = [];
-        for (var i = 0; i < headers.length; i += 2) {
-            var key = headers[i];
-            switch (key) {
-            case "Proxy-Connection":
-            case "Strict-Transport-Security":
-                break;
-            case "Connection":
-                newHeaders.push("Connection");
-                newHeaders.push("close");
-                break;
-            default:
-                newHeaders.push(headers[i]);
-                newHeaders.push(headers[i + 1]);
-                break;
-            }
-        }
+    Util.inherits(Interface, Events.EventEmitter);
 
-        return newHeaders;
-    };
-
-    var cleanRequest = function (req) {
-        req.rawHeaders = cleanHeaders(req);
-        if (!req.method) {
-            req.method = "GET";
-        }
+    var getSocketPaths = function (socketDir) {
+        return {
+            http:          Path.join(socketDir, httpSocketName),
+            https:         Path.join(socketDir, httpsSocketName),
+            tunnelConnect: Path.join(socketDir, tunnelConnectSocketName),
+            tunnelData:    Path.join(socketDir, tunnelDataSocketName)
+        };
     };
 
     var mkdirIfNotExists = function (dn) {
@@ -102,31 +63,6 @@
         }
     };
 
-    var ensureSocketPaths = function (socketDir) {
-        var socketPaths = {
-            http:               Path.join(socketDir, httpSocketName),
-            https:              Path.join(socketDir, httpsSocketName),
-            httpsTunnelConnect: Path.join(socketDir, httpsTunnelConnectSocketName),
-            httpsTunnelData:    Path.join(socketDir, httpsTunnelDataSocketName)
-        };
-
-        ensureDir(socketDir);
-        removeIfExists(socketPaths.http);
-        removeIfExists(socketPaths.https);
-        removeIfExists(socketPaths.httpsTunnelConnect);
-        removeIfExists(socketPaths.httpsTunnelData);
-
-        return socketPaths;
-    };
-
-    var ensureSocketPathsSafe = function (socketDir) {
-        try {
-            return ensureSocketPaths(socketDir);
-        } catch (err) {
-            return {err: err};
-        }
-    };
-
     var logError = function (emitter, prefix) {
         // todo: log these only in verbose mode,
         // if ECONNRESET on tcp socket
@@ -135,24 +71,107 @@
         });
     };
 
-    var httpFallback = function (server, port, clb) {
-        server.http = Http.createServer();
-        logError(server.http, "http fallback server");
+    var canonicalHeaders = function (rawHeaders) {
+        var canonicalHeaders = [];
+        var i;
+        var key;
+        var value;
+        var parts;
+        var canonicalParts;
 
-        server.http.on("request", function (req, res) {
-            logError(req, "http fallback request");
-            logError(res, "http fallback response");
+        for (var i = 0; i < rawHeaders.length; i += 2) {
+            key            = rawHeaders[i];
+            value          = rawHeaders[i + 1];
+            parts          = key.split("-");
+            canonicalParts = [];
 
-            cleanRequest(req);
-            proxy.emit("request", req, res);
-        });
+            for (var j = 0; j < parts.length; j++) {
+                canonicalParts[j] = (
+                    parts[j].substr(0, 1).toUpperCase() +
+                    parts[j].substr(1)
+                );
+            }
 
-        server.http.listen(port, clb);
+            canonicalHeaders.push(canonicalParts.join("-"));
+            canonicalHeaders.push(value);
+        }
+
+        return canonicalHeaders;
     };
 
-    var isClientHello = function (data) {
-        // tls handshake byte
-        return data[0] === 22;
+    var cleanHeaders = function (message) {
+        var headers    = canonicalHeaders(message.rawHeaders);
+        var newHeaders = [];
+
+        for (var i = 0; i < headers.length; i += 2) {
+            var key = headers[i];
+            switch (key) {
+            case "Proxy-Connection":
+            case "Strict-Transport-Security":
+                break;
+            case "Connection":
+                newHeaders.push("Connection");
+                newHeaders.push("close");
+                break;
+            default:
+                newHeaders.push(headers[i]);
+                newHeaders.push(headers[i + 1]);
+                break;
+            }
+        }
+
+        return newHeaders;
+    };
+
+    var parseUrl = function (req) {
+        var url = Url.parse(req.url);
+        if (req.headers.host) {
+            url.host = req.headers.host;
+        }
+
+        return url;
+    };
+
+    var createInternalServer = function (options) {
+        var server;
+        if (options.useTls) {
+            server = Https.createServer(options.serverOptions);
+        } else {
+            server = Http.createServer();
+        }
+
+        logError(server, options.errorLogPrefix);
+
+        server.on("request", function (req, res) {
+            logError(req, options.errorLogPrefix + " request");
+            logError(res, options.errorLogPrefix + " response");
+
+            cleanHeaders(req);
+
+            var url = parseUrl(req);
+            url.protocol = options.useTls ? "https:" : "http:";
+            req.url = Url.format(url);
+
+            options.client.emit("request", req, res);
+        });
+
+        return server;
+    };
+
+    var createHttpServer = function (client, errorLogPrefix) {
+        return createInternalServer({
+            client:         client,
+            errorLogPrefix: errorLogPrefix
+        });
+    };
+
+    var createHttpsServer = function (client, serverOptions, errorLogPrefix) {
+        return createInternalServer({
+            useTls:         true,
+            client:         client,
+            serverOptions:  serverOptions,
+            errorLogPrefix: errorLogPrefix
+        });
     };
 
     var isTunnelConnect = function (data) {
@@ -160,155 +179,76 @@
         return data[0] === 67;
     };
 
-    var createTcpServer = function (server) {
-        server.net = Net.createServer();
-        logError(server.net, "tcp server");
+    var isClientHello = function (data) {
+        // tls handshake byte
+        return data[0] === 22;
+    };
 
-        server.net.on("connection", function (socket) {
-            logError(socket, "tcp socket");
+    var getUnixSocketParams = function (head) {
+        switch (true) {
+        case isTunnelConnect(head):
+            return {
+                socketPathKey:  "tunnelConnect",
+                errorLogPrefix: "tcp to tunnel unix socket"
+            };
+        case isClientHello(head):
+            return {
+                socketPathKey:  "https",
+                errorLogPrefix: "tcp to https unix socket"
+            };
+        default:
+            return {
+                socketPathKey:  "http",
+                errorLogPrefix: "tcp to http unix socket"
+            };
+        }
+    };
+
+    var createUnixSocket = function (options) {
+        var unixSocket = Net.connect(options.path);
+        logError(unixSocket, options.errorLogPrefix);
+
+        unixSocket.write(options.head);
+        options.tcpSocket.pipe(unixSocket);
+        unixSocket.pipe(options.tcpSocket);
+    };
+
+    var createTcpServer = function (socketPaths) {
+        var tcpServer = Net.createServer();
+        logError(tcpServer, "tcp server");
+
+        tcpServer.on("connection", function (socket) {
+            logError(socket, "tcp server socket");
 
             socket.once("data", function (data) {
-                switch (true) {
-                case isTunnelConnect(data):
-                    var unixSocket = Net.connect(
-                        server.socketPaths.httpsTunnelConnect
-                    );
-                    logError(unixSocket, "tcp connect unix socket");
+                var socketParams = getUnixSocketParams(data);
 
-                    unixSocket.write(data);
-                    socket.pipe(unixSocket);
-                    unixSocket.pipe(socket);
-                    break;
-                case isClientHello(data):
-                    var unixSocket = Net.connect(
-                        server.socketPaths.https
-                    );
-                    logError(unixSocket, "tcp hello unix socket");
-
-                    unixSocket.write(data);
-                    socket.pipe(unixSocket);
-                    unixSocket.pipe(socket);
-                    break;
-                default:
-                    var unixSocket = Net.connect(
-                        server.socketPaths.http
-                    );
-                    logError(unixSocket, "tcp unix socket");
-
-                    unixSocket.write(data);
-                    socket.pipe(unixSocket);
-                    unixSocket.pipe(socket);
-                    break;
-                }
+                createUnixSocket({
+                    tcpSocket:      socket,
+                    path:           socketPaths[socketParams.socketPathKey],
+                    errorLogPrefix: socketParams.errorLogPrefix,
+                    head:           data
+                });
             });
         });
+
+        return tcpServer;
     };
 
-    var createHttpServer = function (server) {
-        server.http = Http.createServer();
-        logError(server.http, "http server");
-
-        server.http.on("request", function (req, res) {
-            logError(req, "http request");
-            logError(res, "http response");
-
-            cleanRequest(req);
-
-            var url = Url.parse(req.url);
-            if (req.headers.host) {
-                url.host = req.headers.host;
-            }
-
-            url.protocol = "http:";
-            req.url = Url.format(url);
-
-            server.proxy.emit("request", req, res);
-        });
-    };
-
-    var createHttpsServer = function (server) {
-        var httpsOptions = {};
-        if (server.options.key) {
-            httpsOptions.key = server.options.key;
-            httpsOptions.cert = server.options.cert;
-        } else {
-            server.proxy.emit("fakecertificate");
-            httpsOptions.key = Cert.key;
-            httpsOptions.cert = Cert.cert;
-        }
-
-        server.https = Https.createServer(httpsOptions);
-        logError(server.https, "https server");
-
-        server.https.on("request", function (req, res) {
-            logError(req, "https request");
-            logError(res, "https response");
-
-            cleanRequest(req);
-
-            var url = Url.parse(req.url);
-            if (req.headers.host) {
-                url.host = req.headers.host;
-            }
-
-            url.protocol = "https:";
-            req.url = Url.format(url);
-
-            server.proxy.emit("request", req, res);
-        });
-    };
-
-    var createHttpsTunnelDataServer = function (server) {
-        var httpsOptions = {};
-        if (server.options.key) {
-            httpsOptions.key = server.options.key;
-            httpsOptions.cert = server.options.cert;
-        } else {
-            server.proxy.emit("fakecertificate");
-            httpsOptions.key = Cert.key;
-            httpsOptions.cert = Cert.cert;
-        }
-
-        server.httpsTunnelData = Https.createServer(httpsOptions);
-        logError(server.httpsTunnelData, "https tunnel data server");
-
-        server.httpsTunnelData.on("request", function (req, res) {
-            logError(req, "https tunnel data request");
-            logError(res, "https tunnel data response");
-
-            cleanRequest(req);
-            req.reworse = {tunnel: true};
-
-            var url = Url.parse(req.url);
-            if (req.headers.host) {
-                url.host = req.headers.host;
-            }
-
-            url.protocol = "https:";
-            req.url = Url.format(url);
-
-            server.proxy.emit("request", req, res);
-        });
-    };
-
-    var createHttpsTunnelConnectServer = function (server) {
+    var createTunnelConnect = function (dataSocketPath, errorLogPrefix) {
         var tunnel = Http.createServer();
-        logError(tunnel, "https tunnel connect server");
+        logError(tunnel, errorLogPrefix);
 
         tunnel.on("connect", function (req, socket, head) {
-            logError(req, "https tunnel connect request");
-            logError(socket, "https tunnel connect socket");
+            logError(req, errorLogPrefix + " request");
+            logError(socket, errorLogPrefix + " socket");
 
-            var socketClosed = false;
+            var socketClosed     = false;
             var unixSocketClosed = false;
+            var unixSocket       = Net.connect(dataSocketPath);
 
-            var unixSocket = Net.connect(
-                server.socketPaths.httpsTunnelData
-            );
+            logError(unixSocket, "tunnel connect unix socket");
 
-            logError(unixSocket, "https tunnel connect unix socket");
-
-            // unixSocket.write(head);
             socket.write(
                 "HTTP/1.1 200 Connection established\r\n\
                 Proxy-Agent: reworse\r\n\r\n"
@@ -340,35 +280,61 @@
             });
         });
 
-        server.httpsTunnelConnect = tunnel;
+        return tunnel;
     };
 
-    var createAllServers = function (server) {
-        createTcpServer(server);
-        createHttpServer(server);
-        createHttpsServer(server);
-        createHttpsTunnelConnectServer(server);
-        createHttpsTunnelDataServer(server);
+    var createAllServers = function (client, tlsOptions, socketPaths) {
+        return {
+            tcpServer:     createTcpServer(socketPaths),
+            http:          createHttpServer(client, "http"),
+            https:         createHttpsServer(client, tlsOptions, "https"),
+            tunnelData:    createHttpsServer(client, tlsOptions, "tunnel data"),
+            tunnelConnect: createTunnelConnect(socketPaths.tunnelData, "tunnel connect")
+        };
     };
 
-    var listenOnAll = function (server, port, clb) {
-        server.http.listen(server.socketPaths.http);
-        server.https.listen(server.socketPaths.https);
-        server.httpsTunnelConnect.listen(server.socketPaths.httpsTunnelConnect);
-        server.httpsTunnelData.listen(server.socketPaths.httpsTunnelData);
-        server.net.listen(port, clb);
+    var listenOnAll = function (servers, socketPaths, port, clb) {
+        servers.http.listen(socketPaths.http);
+        servers.https.listen(socketPaths.https);
+        servers.tunnelConnect.listen(socketPaths.tunnelConnect);
+        servers.tunnelData.listen(socketPaths.tunnelData);
+        servers.tcpServer.listen(port, clb);
     };
 
-    var listen = function (server, port, clb) {
-        var socketPaths = ensureSocketPathsSafe(server.options.socketDir);
-        if (socketPaths.err) {
-            server.proxy.emit("httpfallback", socketPaths.err);
-            httpFallback(server, port, clb);
-        } else {
-            server.socketPaths = socketPaths;
-            createAllServers(server);
-            listenOnAll(server, port, clb);
+    var listen = function (listener, port, clb) {
+        var socketPaths = getSocketPaths(listener.options.socketDir);
+        var fileErr;
+        try {
+            ensureDir(listener.options.socketDir);
+            Object.keys(socketPaths).map(
+                function (key) {
+                    return socketPaths[key];
+                }
+            ).forEach(removeIfExists);
+        } catch (err) {
+            fileErr = err;
         }
+
+        if (fileErr) {
+            listener.interface.emit("httpfallback", fileErr);
+            listener.servers = {http: createHttpServer(listener.interface, "http fallback")};
+            listener.servers.http.listen(port, clb);
+            return;
+        }
+
+        var tlsOptions;
+        if (listener.options.cert) {
+            tlsOptions = {
+                key:  listener.options.key,
+                cert: listener.options.cert
+            };
+        } else {
+            listener.interface.emit("fakecertificate");
+            tlsOptions = FakeCert;
+        }
+
+        listener.servers = createAllServers(listener.interface, tlsOptions, socketPaths);
+        listenOnAll(listener.servers, socketPaths, port, clb);
     };
 
     var closeAll = function (servers, clb) {
@@ -380,55 +346,38 @@
             }
         };
 
-        servers.forEach(function (server) {
-            if (!server) {
+        Object.keys(servers).forEach(function (name) {
+            if (!servers[name]) {
                 return;
             }
 
             counter++;
-            server.close(clbi);
+            servers[name].close(clbi);
         });
     };
 
-    var close = function (server, clb) {
-        closeAll([
-            server.net,
-            server.http,
-            server.https,
-            server.httpsTunnelConnect,
-            server.httpsTunnelData
-        ], clb);
+    var close = function (listener, clb) {
+        closeAll(listener.servers, clb);
     };
-
-    var Proxy = function () {
-        Events.EventEmitter.call(this);
-    };
-
-    Util.inherits(Proxy, Events.EventEmitter);
 
     var create = function (options) {
-        if (options === undefined) {
-            options = {};
-        }
+        options = options || {};
+        options.socketDir = options.socketDir || defaultSocketDir;
 
-        if (options.socketDir === undefined) {
-            options.socketDir = defaultSocketDir;
-        }
-
-        var server = {
-            options: options,
-            proxy: new Proxy
+        var listener = {
+            options:   options,
+            interface: new Interface
         };
 
-        server.proxy.listen = function (port, clb) {
-            listen(server, port, clb);
+        listener.interface.listen = function (port, clb) {
+            listen(listener, port, clb);
         };
 
-        server.proxy.close = function (clb) {
-            close(server, clb);
+        listener.interface.close = function (clb) {
+            close(listener, clb);
         };
 
-        return server.proxy;
+        return listener.interface;
     };
 
     exports.createServer     = create;
