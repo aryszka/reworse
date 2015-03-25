@@ -6,18 +6,19 @@
 
     process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
-    var Url      = require("url");
+    var Errors   = require("./default-error-handler");
     var Flags    = require("flags");
-    var Url      = require("url");
-    var Path     = require("path");
-    var Listener = require("./listener");
+    var Headers  = require("./headers");
     var Http     = require("http");
     var Https    = require("https");
+    var Listener = require("./listener");
+    var Path     = require("path");
+    var Url      = require("url");
 
     var defaultPort = 9000;
 
     var rawHeaders = function (list) {
-        list = Listener.canonicalHeaders(list);
+        list = Headers.canonicalHeaders(list);
         var headers = {};
         for (var i = 0; i < list.length; i += 2) {
             headers[list[i]] = list[i + 1];
@@ -32,6 +33,7 @@
         if (req.headers["content-length"]) {
             contentLength = parseInt(req.headers["content-length"], 10);
         }
+
         var receivedLength = 0;
         var requestEndCalled = false;
         var preq = implementation.request({
@@ -42,7 +44,7 @@
             headers:  rawHeaders(req.rawHeaders)
         });
 
-        Listener.logError(preq, parsedUrl.protocol, "proxy request");
+        Errors.handle("proxy request", preq, parsedUrl.protocol);
 
         req.on("data", function (data) {
             preq.write(data, "binary");
@@ -91,7 +93,7 @@
     };
 
     var mapResponse = function (pres, res) {
-        pres.rawHeaders = Listener.cleanHeaders(pres);
+        pres.rawHeaders = Headers.conditionMessage(pres);
         res.writeHead(pres.statusCode, rawHeaders(pres.rawHeaders));
 
         if (noData(pres)) {
@@ -136,18 +138,11 @@
         });
 
         preq.on("response", function (pres) {
-            Listener.logError(pres);
+            Errors.handle("proxy response", pres);
             mapResponse(pres, res);
         });
 
-        // todo: filters won't receive it this way, emit event instead
-        // if (preq.method !== "POST" &&
-        //     preq.method !== "PUT" ||
-        //     (req.reworse && req.reworse.tunnel ||
-        //     req.headers.connection === "keep-alive") ||
-        //     parseInt(req.headers["content-length"], 10) === 0) {
-        //     preq.end();
-        // }
+        // todo: figure this better
         if (preq.method !== "POST" && preq.method !== "PUT") {
             preq.end();
         }
