@@ -6,7 +6,7 @@
 
     process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
-    var Errors   = require("./default-error-handler");
+    var Errors   = require("./errors");
     var Flags    = require("flags");
     var Headers  = require("./headers");
     var Http     = require("http");
@@ -155,6 +155,8 @@
             proxy(req, res, filters);
         });
 
+        Errors.handle("listener error", server);
+
         server.listen(port, function (err) {
             if (clb) {
                 clb(server);
@@ -206,7 +208,7 @@
 
     run.defaultPort = defaultPort;
     run.rawHeaders  = rawHeaders;
-    run.run = run;
+    run.run         = run;
 
     module.exports = run;
 })();

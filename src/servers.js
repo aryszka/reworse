@@ -1,7 +1,7 @@
 (function () {
     "use strict";
 
-    var Errors  = require("./default-error-handler");
+    var Errors  = require("./errors");
     var Headers = require("./headers");
     var Http    = require("http");
     var Https   = require("https");
@@ -19,6 +19,9 @@
     };
 
     var createExternalServer = function (options) {
+        // todo: log errors here only in verbose mode,
+        // if ECONNRESET on tcp socket
+
         var server = Net.createServer();
         Errors.forward("external server", server, options.errors);
 

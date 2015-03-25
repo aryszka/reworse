@@ -1,7 +1,7 @@
 (function () {
     "use strict";
 
-    var Errors   = require("./default-error-handler");
+    var Errors   = require("./errors");
     var Events   = require("events");
     var FakeCert = require("./fake-cert");
     var FsEnv    = require("./fs-env");
@@ -58,8 +58,8 @@
     var listenFull = function (listener, port, clb) {
         if (listener.tlsCert === FakeCert) {
             Errors.emit(
-                "fakecertificate",
                 "no tls certificate provided",
+                "fakecertificate",
                 listener.iface
             );
         }
