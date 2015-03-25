@@ -18,6 +18,7 @@
     var defaultPort = 9000;
 
     var rawHeaders = function (list) {
+        // todo: there should be no need to call this here
         list = Headers.canonicalHeaders(list);
         var headers = {};
         for (var i = 0; i < list.length; i += 2) {
@@ -93,7 +94,7 @@
     };
 
     var mapResponse = function (pres, res) {
-        pres.rawHeaders = Headers.conditionMessage(pres);
+        Headers.conditionMessage(pres);
         res.writeHead(pres.statusCode, rawHeaders(pres.rawHeaders));
 
         if (noData(pres)) {

@@ -34,6 +34,7 @@
             // omit
             case names.proxyConnection:
             case names.strictTransportSecurity:
+                delete message.headers[key.toLowerCase()];
                 break;
 
             // close
@@ -41,17 +42,19 @@
             case names.connection:
                 newHeaders.push("Connection");
                 newHeaders.push("close");
+                message.headers["connection"] = "close";
                 break;
 
             // canonical name, verbatim value
             default:
                 newHeaders.push(headers[i]);
                 newHeaders.push(headers[i + 1]);
+                message.headers[headers[i]] = headers[i + 1];
                 break;
             }
         }
 
-        return newHeaders;
+        message.rawHeaders = newHeaders;
     };
 
     module.exports = {
