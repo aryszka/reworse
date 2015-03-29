@@ -543,4 +543,46 @@ suite("listener", function () {
             });
         });
     });
+
+    test("ignores missing callback on listen", function (done) {
+        var listener = Listener.createServer();
+        listener.on("error", function (err, origin) {
+            assert(origin.indexOf(Listener.fakeCertificateOrigin) === 0);
+        });
+
+        listener.listen(9090);
+        listener.close(function () {
+            done();
+        });
+    });
+
+    test("ignores missing callback on fallback listen", function (done) {
+        var ensureDir = FsEnv.ensureDir;
+
+        FsEnv.ensureDir = function () {
+            throw "test error";
+        };
+
+        var listener = Listener.createServer();
+        listener.on("error", function (err, origin) {
+            assert(origin.indexOf(Listener.httpFallbackOrigin) === 0);
+        });
+
+        listener.listen(9090);
+        listener.close(function () {
+            FsEnv.ensureDir = ensureDir;
+            done();
+        });
+    });
+
+    test("ignores missing callback on close", function (done) {
+        var listener = Listener.createServer();
+        listener.on("error", function (err, origin) {
+            assert(origin.indexOf(Listener.fakeCertificateOrigin) === 0);
+        });
+
+        listener.listen(9090);
+        listener.close();
+        setTimeout(done);
+    });
 });

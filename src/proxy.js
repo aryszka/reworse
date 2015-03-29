@@ -1,17 +1,17 @@
 (function () {
     "use strict";
 
-    var Errors = require("./errors");
-    var Events = require("events");
+    var Errors  = require("./errors");
+    var Events  = require("events");
     var Headers = require("./headers");
-    var Http = require("http");
-    var Https = require("https");
-    var Url = require("url");
+    var Http    = require("http");
+    var Https   = require("https");
+    var Url     = require("url");
 
     var errorOrigin = "proxy";
 
     var proxyRequest = function (proxy, method, url, rawHeaders) {
-        var url = Url.parse(url);
+        var url            = Url.parse(url);
         var implementation = url.protocol === "https:" ? Https : Http;
 
         var preq = implementation.request({
@@ -28,8 +28,8 @@
     };
 
     var copyRequestData = function (req, preq) {
-        var contentLength = 0;
-        var receivedLength = 0;
+        var contentLength    = 0;
+        var receivedLength   = 0;
         var requestEndCalled = false;
 
         if (req.headers["content-length"]) {
@@ -139,6 +139,7 @@
 
     var create = function () {
         var proxy = new Events.EventEmitter;
+
         proxy.handle = function (req, res) {
             handle(proxy, req, res);
         };

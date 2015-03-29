@@ -2,499 +2,330 @@ suite("main", function () {
     "use strict";
 
     var assert   = require("assert");
+    var Events   = require("events");
     var Flags    = require("flags");
-    var Headers  = require("./headers");
-    var main     = require("./main");
-    var Url      = require("url");
-    var Path     = require("path");
+    var Fs       = require("fs");
     var Listener = require("./listener");
-    var Http     = require("http");
+    var Main     = require("./main");
     var mockArgs = require("./mock-args");
+    var Path     = require("path");
+    var Proxy    = require("./proxy");
 
-    var withServer = function (test) {
-        return function (done) {
-            var server;
-            test(
-                function (requireFilter) {
-                    server = main.run(requireFilter || require, function () {});
-                    return server;
-                },
-                function () {
-                    if (!server) {
-                        done();
-                        return;
-                    }
+    var createListener;
+    var createProxy;
+    var exit;
+    var getFlag;
+    var readFile;
+    var startupArgs;
+    var stderr;
 
-                    server.close(function (err) {
-                        assert(!err, err);
-                        done();
-                    });
-                }
-            );
-        };
-    };
+    var noop = function () {};
 
-    var watchStderr = function (expression, done) {
-        var stderr = console.error;
-        console.error = function (message) {
-            if (!String(message).match(expression)) {
-                stderr.apply(console, [].slice.call(arguments));
-                return;
+    var mockListener = function (onCreate) {
+        Listener.createServer = function (options) {
+            var listener = new Events.EventEmitter;
+
+            listener.options = options;
+            listener.listen  = noop;
+
+            if (onCreate) {
+                onCreate(listener);
             }
 
-            console.error = stderr;
-            done();
+            return listener;
         };
     };
 
-    var testServer = function () {
-        return function () {
-            return {
-                on: function (eventName, handler) {
-                    this[eventName] = handler;
-                },
+    var mockProxy = function (onCreate) {
+        Proxy.create = function (options) {
+            var proxy = new Events.EventEmitter;
 
-                emit: function (eventName) {
-                    this[eventName].apply(this, [].slice.call(arguments, 1));
-                },
+            proxy.options = options;
+            proxy.handle  = noop;
 
-                close: function (clb) {
-                    clb();
-                },
+            if (onCreate) {
+                onCreate(proxy);
+            }
 
-                listen: function () {}
-            };
+            return proxy;
         };
     };
 
-    var withTestServer = function (test) {
-        return withServer(function (start, done) {
-            var listenerCreateServer = Listener.createServer;
-            Listener.createServer    = testServer();
-
-            test(start, function () {
-                Listener.createServer = listenerCreateServer;
-                done();
-            });
-        });
+    var mockExit = function (f) {
+        process.exit = f;
     };
 
-    var cmdArgs = process.argv.slice(2);
+    var mockStderr = function (f) {
+        console.error = f;
+    };
+
+    var mockFlags = function (f) {
+        Flags.get = f;
+    };
+
+    var mockReadFile = function (f) {
+        Fs.readFileSync = f;
+    };
 
     setup(function () {
+        createListener = Listener.createServer;
+        createProxy    = Proxy.create;
+        exit           = process.exit;
+        getFlag        = Flags.get;
+        readFile       = Fs.readFileSync;
+        startupArgs    = process.argv;
+        stderr         = console.error;
+
         mockArgs();
+        mockListener();
+        mockProxy();
     });
 
     teardown(function () {
-        mockArgs(cmdArgs);
+        console.error         = stderr;
+        Flags.get             = getFlag;
+        Fs.readFileSync       = readFile;
+        Listener.createServer = createListener;
+        process.argv          = startupArgs;
+        process.exit          = exit;
+        Proxy.create          = createProxy;
     });
 
-    test("starts/stops", function (done) {
-        main.run(function (server) {
-            server.close(function () {
-                done();
-            });
-        });
-    });
+    test("uses command line flags if no options provided", function () {
+        var testSocketDir  = "test-socket-dir";
+        var createListener = Listener.createServer;
 
-    test("reports status on stderr, on success, with default port", withServer(function (start, done) {
-        // enable when server can listen to the specified port
-        done();
-        return;
-
-        watchStderr(new RegExp(String(main.defaultPort)), done);
-        start();
-    }));
-
-    test("reports status on stderr, on success, with custom port", withServer(function (start, done) {
-        // enable when server can listen to the specified port
-        done();
-        return;
-
-        mockArgs(["--port", "8989"], function () {
-            watchStderr(/8989/, done);
-            start();
-        });
-    }));
-
-    test("maps requests", withTestServer(function (start, done) {
-        var httpRequest = Http.request;
-        var testRequestOptions = {
-            method:   "HEAD",
-            hostname: "test-host",
-            port:     8989,
-            path:     "/test-path",
-
-            rawHeaders: [
-                "Test-Header-0", "test-value-0",
-                "Test-Header-1", "test-value-1"
-            ]
-        };
-
-        testRequestOptions.headers = Headers.mapRaw(testRequestOptions.rawHeaders);
-
-        Http.request = function (options) {
-            assert(options.method         === testRequestOptions.method);
-            assert(options.hostname       === testRequestOptions.hostname);
-            assert(String(options.port)   === String(testRequestOptions.port));
-            assert(options.path           === testRequestOptions.path);
-
-            for (var key in options.headers) {
-                assert(options.headers[key] === testRequestOptions.headers[key]);
+        mockFlags(function (name) {
+            if (name === "socket-dir") {
+                return testSocketDir;
             }
+        });
 
-            Http.request = httpRequest;
+        mockListener(function (listener) {
+            assert(listener.options.socketDir === testSocketDir);
+        });
 
-            done();
+        Main.run();
+    });
 
-            return {
-                on:  function () {},
-                end: function () {}
-            };
+    test("reports failure on tls certificate load error", function () {
+        var reported = false;
+
+        mockExit(noop);
+
+        mockFlags(function (name) {
+            if (name === "tls-cert") {
+                return "test-path";
+            }
+        });
+
+        mockReadFile(function () {
+            throw "test error";
+        });
+
+        mockStderr(function (msg) {
+            reported = true;
+            assert(msg.indexOf("certificate") >= 0);
+        });
+
+        Main.run();
+        assert(reported);
+    });
+
+    test("loads specified filters", function () {
+        var filters = {
+            "filter0": false,
+            "filter1": false,
+            "filter2": false
         };
 
-        var server = start();
-        server.emit("request", {
-            method:     testRequestOptions.method,
-            rawHeaders: testRequestOptions.rawHeaders,
-            headers:    testRequestOptions.headers,
-            on:         function () {},
+        var paths = Object.keys(filters);
 
-            url: Url.format({
-                protocol: "http",
-                hostname: testRequestOptions.hostname,
-                port:     testRequestOptions.port,
-                pathname: testRequestOptions.path
-            })
-        }, {
-            on: function () {}
-        });
-    }));
-
-    test("copies request input", withTestServer(function (start, done) {
-        var httpRequest   = Http.request;
-        var requestBuffer = new Buffer("");
-
-        Http.request = function () {
-            return {
-                buffer: new Buffer(""),
-                on:     function () {},
-
-                write: function (data) {
-                    this.buffer = Buffer.concat([this.buffer, data]);
+        Main.run({
+            filters: {
+                require: function (path) {
+                    filters[Path.basename(path)] = true;
                 },
 
-                end: function (data) {
-                    if (data) {
-                        this.buffer = Buffer.concat([this.buffer, data]);
-                    }
-
-                    assert(this.buffer.equals(requestBuffer));
-
-                    Http.request = httpRequest;
-                    done();
-                }
-            };
-        };
-
-        var request = {
-            method:     "POST",
-            url:        "http://test-hostname:8989/test-path",
-            rawHeaders: ["Content-Length", "0"],
-            headers:    {"content-length": "0"},
-
-            on: function (eventName, handler) {
-                this[eventName] = handler;
-            },
-
-            emit: function (eventName) {
-                this[eventName].apply(this, [].slice.call(arguments, 1));
-            },
-
-            send: function (string) {
-                var buffer = new Buffer(string);
-                requestBuffer = Buffer.concat([requestBuffer, buffer]);
-                this.emit("data", buffer);
-            },
-
-            end: function () {
-                this.emit("end");
+                paths: paths
             }
-        };
-
-        var server = start();
-        server.emit("request", request, {
-            on: function () {}
         });
-        request.send("some");
-        request.send(" ");
-        request.send("data");
-        request.end();
-    }));
 
-    test("maps response", withTestServer(function (start, done) {
-        var httpRequest = Http.request;
+        assert(paths.every(function (path) {
+            return filters[path];
+        }));
+    });
 
-        var request = {
-            method:     "GET",
-            url:        "http://test-hostname:8989/test-path",
-            rawHeaders: [],
-            headers:    {},
-            on:         function () {}
-        };
+    test("reports failure on filter load error", function () {
+        var reported = false;
 
-        var prequest = {
-            end: function () {},
+        mockExit(noop);
 
-            on: function (eventName, handler) {
-                this[eventName] = handler;
-            },
-
-            emit: function (eventName) {
-                this[eventName].apply(this, [].slice.call(arguments, 1));
-            }
-        };
-
-        Http.request = function () {
-            return prequest;
-        };
-
-        var presponse = {
-            statusCode: 418,
-            on:         function () {},
-
-            rawHeaders: [
-                "Test-Header-0", "test-value-0",
-                "Test-Header-1", "test-value-1"
-            ]
-        };
-
-        presponse.headers = Headers.mapRaw(presponse.rawHeaders);
-
-        var response = {
-            on: function () {},
-
-            writeHead: function (statusCode, headers) {
-                assert(statusCode === presponse.statusCode);
-                for (var key in headers) {
-                    assert(headers[key] === presponse.headers[key]);
-                }
-
-                Http.request = httpRequest;
-                done();
-            }
-        };
-
-        var server = start();
-        server.emit("request", request, response);
-        prequest.emit("response", presponse);
-    }));
-
-    test("copies response", withTestServer(function (start, done) {
-        var httpRequest    = Http.request;
-        var responseBuffer = new Buffer("");
-
-        var request = {
-            url:        "http://test-hostname:8989/test-path",
-            rawHeaders: [],
-            headers:    {},
-            on:         function () {}
-        };
-
-        var response = {
-            buffer:    new Buffer(""),
-            writeHead: function () {},
-            on:        function () {},
-
-            write: function (data) {
-                this.buffer = Buffer.concat([this.buffer, data]);
-            },
-
-            end: function (data) {
-                if (data) {
-                    this.buffer = Buffer.concat([this.buffer, data]);
-                }
-
-                assert(this.buffer.equals(responseBuffer));
-
-                Http.request = httpRequest;
-                done();
-            }
-        };
-
-        var prequest = {
-            end: function () {},
-
-            on: function (eventName, handler) {
-                this[eventName] = handler;
-            },
-
-            emit: function (eventName) {
-                this[eventName].apply(this, [].slice.call(arguments, 1));
-            }
-        };
-
-        Http.request = function () {
-            return prequest;
-        };
-
-        var presponse = {
-            rawHeaders: [],
-            headers:    {},
-
-            on: function (eventName, handler) {
-                this[eventName] = handler;
-            },
-
-            emit: function (eventName) {
-                this[eventName].apply(this, [].slice.call(arguments, 1));
-            },
-
-            send: function (string) {
-                var buffer = new Buffer(string);
-                responseBuffer = Buffer.concat([responseBuffer, buffer]);
-                this.emit("data", buffer);
-            }
-        };
-
-        var server = start();
-        server.emit("request", request, response);
-        prequest.emit("response", presponse);
-        presponse.send("some");
-        presponse.send(" ");
-        presponse.send("data");
-        presponse.end();
-    }));
-
-    test("applies passive filters", withTestServer(function (start, done) {
-        var httpRequest   = Http.request;
-        var response      = {on: function () {}};
-        var filtersCalled = 0;
-
-        var request = {
-            url:        "http://test-hostname:8989/test-path",
-            rawHeaders: [],
-            headers:    {},
-            on:         function () {}
-        };
-
-        var filter = function (req, res) {
-            filtersCalled++;
-
-            assert(req === request);
-            assert(res === response);
-        };
-
-        var filters = {
-            "filter0": filter,
-            "filter1": filter
-        };
-
-        Http.request = function () {
-            assert(filtersCalled === 2);
-            Http.request = httpRequest;
-            done();
-            return {
-                on:  function () {},
-                end: function () {}
-            };
-        };
-
-        mockArgs(["--filter", "filter0", "--filter", "filter1"], function () {
-            var server = start(function (path) {
-                return filters[Path.basename(path)];
-            });
-
-            server.emit("request", request, response);
+        mockStderr(function (msg) {
+            reported = true;
+            assert(msg.indexOf("invalid filter") >= 0);
         });
-    }));
 
-    test("applies active filters", withTestServer(function (start, done) {
-        var httpRequest   = Http.request;
-        var request       = {on: function () {}};
-        var response      = {on: function () {}};
-        var filtersCalled = [];
+        Main.run({
+            filters: {
+                require: function () {
+                    throw "test error";
+                },
 
-        var checkDone = function () {
-            if (filtersCalled.length < 3) {
-                return;
+                paths: ["filter-path"]
             }
-
-            assert(filtersCalled.reduce(function (handledCount, handled) {
-                if (handled) {
-                    return handledCount + 1;
-                }
-
-                return handledCount;
-            }) > 0);
-
-            Http.request = httpRequest;
-            done();
-        };
-
-        var filters = {
-            "filter0": function (req, res, handled) {
-                filtersCalled.push(handled);
-
-                assert(req === request);
-                assert(res === response);
-
-                checkDone();
-            },
-
-            "filter1": function (req, res, handled) {
-                filtersCalled.push(handled);
-
-                assert(req === request);
-                assert(res === response);
-
-                checkDone();
-
-                return true;
-            },
-
-            "filter2": function (req, res, handled) {
-                filtersCalled.push(handled);
-
-                assert(req === request);
-                assert(res === response);
-
-                checkDone();
-
-                return true;
-            }
-        };
-
-        Http.request = function () {
-            assert(false);
-        };
-
-        mockArgs([
-            "--filter", "filter0",
-            "--filter", "filter1",
-            "--filter", "filter2"
-        ], function () {
-            var server = start(function (path) {
-                return filters[Path.basename(path)];
-            });
-
-            server.emit("request", request, response);
         });
-    }));
 
-    test("reports failure of loading filter", withTestServer(function (start, done) {
-        var processExit = process.exit;
-        process.exit = function () {};
-        watchStderr(/invalid filter/, function () {
+        assert(reported);
+    });
+
+    test("handles errors on listener", function (done) {
+        var testError = "test error";
+
+        mockListener(function (listener) {
             setTimeout(function () {
-                process.exit = processExit;
+                listener.emit("error", testError);
+            });
+        });
+
+        mockStderr(function (msg, origin) {
+            assert(msg === testError);
+            assert(origin === "listener");
+
+            done();
+        });
+
+        Main.run();
+    });
+
+    test("handles errors on proxy", function (done) {
+        var testError = "test error";
+
+        mockProxy(function (proxy) {
+            setTimeout(function () {
+                proxy.emit("error", testError);
+            });
+        });
+
+        mockStderr(function (msg, origin) {
+            assert(msg === testError);
+            assert(origin === "proxy");
+
+            done();
+        });
+
+        Main.run();
+    });
+
+    test("calls proxy on request", function (done) {
+        var request     = {};
+        var response    = {};
+        var proxyCalled = false;
+
+        mockListener(function (listener) {
+            setTimeout(function () {
+                listener.emit("request", request, response);
+                assert(proxyCalled);
                 done();
             });
         });
-        mockArgs(["--filter", "some-filter"], function () {
-            start(function () {
-                throw new Error("test-error");
+
+        mockProxy(function (proxy) {
+            proxy.handle = function (req, res) {
+                assert(req === request);
+                assert(res === response);
+
+                proxyCalled = true;
+            };
+        });
+
+        Main.run();
+    });
+
+    test("applies filters on listener request before proxying", function (done) {
+        var request     = {};
+        var response    = {};
+        var filters     = {};
+        var proxyCalled = false;
+
+        var mkfilter = function (name) {
+            filters[name] = function (req, res) {
+                assert(req === request);
+                assert(res === response);
+                filters[name].called = true;
+            };
+        };
+
+        mkfilter("filter0");
+        mkfilter("filter1");
+        mkfilter("filter2");
+
+        mockListener(function (listener) {
+            setTimeout(function () {
+                listener.emit("request", request, response);
+                assert(proxyCalled);
+                done();
             });
         });
-    }));
+
+        mockProxy(function (proxy) {
+            proxy.handle = function (req, res) {
+                assert(req === request);
+                assert(res === response);
+
+                assert(Object.keys(filters).every(function (name) {
+                    return filters[name].called;
+                }));
+
+                proxyCalled = true;
+            };
+        });
+
+        Main.run({
+            filters: {
+                require: function (name) {
+                    return filters[Path.basename(name)];
+                },
+
+                paths: Object.keys(filters)
+            }
+        });
+    });
+
+    test("does not make proxy request if any of the filters handled the request", function (done) {
+        var filters = {};
+
+        var mkfilter = function (name, handle) {
+            filters[name] = function () {
+                return handle;
+            };
+        };
+
+        mkfilter("filter0");
+        mkfilter("filter1", true);
+        mkfilter("filter2");
+
+        mockListener(function (listener) {
+            setTimeout(function () {
+                listener.emit("request");
+                done();
+            });
+        });
+
+        mockProxy(function (proxy) {
+            proxy.handle = function () {
+                assert(false);
+            };
+        });
+
+        Main.run({
+            filters: {
+                require: function (name) {
+                    return filters[Path.basename(name)];
+                },
+
+                paths: Object.keys(filters)
+            }
+        });
+    });
 });

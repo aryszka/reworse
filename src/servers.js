@@ -22,22 +22,22 @@
     };
 
     var externalDataStart = function (socket, data, options) {
+        var origin;
         var relayAddress;
         var relaySocket;
-        var origin;
 
         switch (true) {
         case isTunnelConnect(data):
-            relayAddress = options.socketPaths.tunnelConnect;
             origin       = externalServerOrigin + "-tunnelconnect";
+            relayAddress = options.socketPaths.tunnelConnect;
             break;
         case isClientHello(data):
-            relayAddress = options.socketPaths.https;
             origin       = externalServerOrigin + "-internalhttps";
+            relayAddress = options.socketPaths.https;
             break;
         default:
-            relayAddress = options.socketPaths.http;
             origin       = externalServerOrigin + "-internalhttp";
+            relayAddress = options.socketPaths.http;
             break;
         }
 
@@ -63,6 +63,7 @@
         Errors.forward(externalServerOrigin, server, options.events);
 
         server.address = options.address;
+
         server.on("connection", function (socket) {
             Errors.forward(
                 externalServerOrigin + "-socket",
@@ -78,6 +79,7 @@
 
     var parseUrl = function (req) {
         var url = Url.parse(req.url);
+
         if (req.headers.host) {
             url.host = req.headers.host;
         }
@@ -111,6 +113,7 @@
         Errors.forward(options.origin, server, options.events);
 
         server.address = options.address;
+
         server.on("request", function (req, res) {
             internalRequest(req, res, options);
         });
@@ -121,8 +124,8 @@
     var tunnelConnection = function (req, socket, options) {
         var socketClosed     = false;
         var tunnelDataClosed = false;
+        var tunnelData       = Net.connect(options.dataPath);
 
-        var tunnelData = Net.connect(options.dataPath);
         Errors.forward(
             tunnelConnectOrigin + "-data",
             tunnelData,

@@ -7,7 +7,7 @@
     var Https   = require("https");
     var Tls     = require("tls");
     var assert  = require("assert");
-    var main    = require("./main");
+    var Main    = require("./main");
     var Cert    = require("./fake-cert");
 
     var ProxyAgent = function (options) {
@@ -224,7 +224,7 @@
             ]
         });
 
-        main.run(function (proxy) {
+        Main.run(function (proxy) {
             var service = createTestService({
                 Implementation: options.Implementation.Server,
 
@@ -308,7 +308,7 @@
         testRoundtrip({
             Implementation: Implementation,
             servicePort:    servicePort,
-            requestPort:    main.defaultPort,
+            requestPort:    Main.defaultPort,
             done:           done,
 
             body: [
@@ -322,7 +322,7 @@
         testRoundtrip({
             Implementation: Implementation,
             servicePort:    servicePort,
-            requestPort:    main.defaultPort,
+            requestPort:    Main.defaultPort,
             done:           done,
             method:         "POST",
 
@@ -347,7 +347,7 @@
         testRoundtrip({
             Implementation: Implementation,
             servicePort:    servicePort,
-            requestPort:    main.defaultPort,
+            requestPort:    Main.defaultPort,
             done:           done,
             requestCount:   3,
 
@@ -378,7 +378,7 @@
 
             agent: new Tunneling.Agent({
                 host: "localhost",
-                port: main.defaultPort
+                port: Main.defaultPort
             }),
 
             body: [
@@ -397,7 +397,7 @@
 
             agent: new Tunneling.Agent({
                 host: "localhost",
-                port: main.defaultPort
+                port: Main.defaultPort
             }),
 
             requestBody: [

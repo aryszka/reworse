@@ -1,13 +1,13 @@
 suite("proxy", function () {
     "use strict";
 
-    var assert = require("assert");
-    var Events = require("events");
+    var assert  = require("assert");
+    var Events  = require("events");
     var Headers = require("./headers");
-    var Http = require("http");
-    var Https = require("https");
-    var Proxy = require("./proxy");
-    var Url = require("url");
+    var Http    = require("http");
+    var Https   = require("https");
+    var Proxy   = require("./proxy");
+    var Url     = require("url");
 
     var httpRequest   = Http.request;
     var httpsRequest  = Https.request;
@@ -44,7 +44,7 @@ suite("proxy", function () {
 
         res.statusCode = options.statusCode || 200;
         res.rawHeaders = options.rawHeaders || [];
-        res.headers = options.headers || {};
+        res.headers    = options.headers || {};
 
         return res;
     };
@@ -135,9 +135,11 @@ suite("proxy", function () {
 
         proxyRequests.on("request", function (preq) {
             var testUrl = Url.parse(url);
+
             assert(preq.options.hostname === testUrl.hostname);
             assert(preq.options.port === testUrl.port);
             assert(preq.options.path === testUrl.path);
+
             done();
         });
 
@@ -146,6 +148,7 @@ suite("proxy", function () {
 
     test("maps request headers", function (done) {
         var proxy = Proxy.create();
+
         var rawHeaders = [
             "Some-Header-0", "some value 0",
             "Some-Header-1", "some value 1"
@@ -183,8 +186,9 @@ suite("proxy", function () {
 
     test("copies data until content length", function (done) {
         var proxy = Proxy.create();
+
         var req = testRequest({
-            method: "PUT",
+            method:  "PUT",
             headers: {"content-length": "3"}
         });
 
@@ -210,8 +214,9 @@ suite("proxy", function () {
 
     test("copies data until end received", function (done) {
         var proxy = Proxy.create();
+
         var req = testRequest({
-            method: "PUT",
+            method:  "PUT",
             headers: {"content-length": "3"}
         });
 
@@ -238,8 +243,9 @@ suite("proxy", function () {
 
     test("does not copy data if not PUT or POST (todo!!!)", function (done) {
         var proxy = Proxy.create();
+
         var req = testRequest({
-            method: "GET",
+            method:  "GET",
             headers: {"content-length": "3"}
         });
 
@@ -253,8 +259,8 @@ suite("proxy", function () {
 
     test("response teapot on request error", function (done) {
         var proxy = Proxy.create();
-        var req = testRequest();
-        var res = testResponse();
+        var req   = testRequest();
+        var res   = testResponse();
 
         res.on("head", function (statusCode) {
             assert(statusCode === 418);
@@ -266,18 +272,18 @@ suite("proxy", function () {
         });
 
         proxy.on("error", function () {});
-
         proxy.handle(req, res);
     });
 
     test("maps response errors to proxy", function (done) {
-        var proxy = Proxy.create();
-        var req = testRequest();
-        var res = testResponse();
+        var proxy     = Proxy.create();
+        var req       = testRequest();
+        var res       = testResponse();
         var testError = "test error";
 
         proxyRequests.on("request", function (preq) {
             var pres = testProxyResponse();
+
             preq.emit("response", pres);
             pres.emit("error", testError);
         });
@@ -285,6 +291,7 @@ suite("proxy", function () {
         proxy.on("error", function (err, origin) {
             assert(err === testError);
             assert(origin.indexOf(Proxy.errorOrigin) === 0);
+
             done();
         });
 
@@ -293,8 +300,8 @@ suite("proxy", function () {
 
     test("conditions response headers", function (done) {
         var proxy = Proxy.create();
-        var req = testRequest();
-        var res = testResponse();
+        var req   = testRequest();
+        var res   = testResponse();
 
         var rawHeaders = [
             "some-Header-0", "some value 0",
@@ -309,6 +316,7 @@ suite("proxy", function () {
 
         res.on("head", function (_, headers) {
             var canonical = Headers.canonicalHeaders(rawHeaders);
+
             for (var i = 0; i < canonical.length; i += 2) {
                 assert(headers[canonical[i]] === canonical[i + 1]);
             }
@@ -321,9 +329,9 @@ suite("proxy", function () {
 
     test("finishes response if no content", function (done) {
         var proxy = Proxy.create();
-        var req = testRequest();
-        var res = testResponse();
-        var pres = testProxyResponse({headers: {"content-length": "0"}});
+        var req   = testRequest();
+        var res   = testResponse();
+        var pres  = testProxyResponse({headers: {"content-length": "0"}});
 
         proxyRequests.on("request", function (preq) {
             preq.emit("response", pres);
@@ -338,9 +346,9 @@ suite("proxy", function () {
 
     test("finishes response if status 204", function (done) {
         var proxy = Proxy.create();
-        var req = testRequest();
-        var res = testResponse();
-        var pres = testProxyResponse({statusCode: 204});
+        var req   = testRequest();
+        var res   = testResponse();
+        var pres  = testProxyResponse({statusCode: 204});
 
         proxyRequests.on("request", function (preq) {
             preq.emit("response", pres);
@@ -355,9 +363,9 @@ suite("proxy", function () {
 
     test("finishes response if status 205", function (done) {
         var proxy = Proxy.create();
-        var req = testRequest();
-        var res = testResponse();
-        var pres = testProxyResponse({statusCode: 205});
+        var req   = testRequest();
+        var res   = testResponse();
+        var pres  = testProxyResponse({statusCode: 205});
 
         proxyRequests.on("request", function (preq) {
             preq.emit("response", pres);
@@ -372,9 +380,9 @@ suite("proxy", function () {
 
     test("finishes response if status 304", function (done) {
         var proxy = Proxy.create();
-        var req = testRequest();
-        var res = testResponse();
-        var pres = testProxyResponse({statusCode: 304});
+        var req   = testRequest();
+        var res   = testResponse();
+        var pres  = testProxyResponse({statusCode: 304});
 
         proxyRequests.on("request", function (preq) {
             preq.emit("response", pres);
@@ -389,9 +397,9 @@ suite("proxy", function () {
 
     test("finishes response on response end", function (done) {
         var proxy = Proxy.create();
-        var req = testRequest();
-        var res = testResponse();
-        var pres = testProxyResponse();
+        var req   = testRequest();
+        var res   = testResponse();
+        var pres  = testProxyResponse();
 
         proxyRequests.on("request", function (preq) {
             preq.emit("response", pres);

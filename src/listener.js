@@ -17,6 +17,8 @@
     var fakeCertificateOrigin   = "fakecertificate";
     var httpFallbackOrigin      = "httpfallback";
 
+    var noop = function () {};
+
     var initEnv = function (listener) {
         FsEnv.ensureDir(listener.socketDir);
         Object.keys(listener.socketPaths).map(function (key) {
@@ -40,7 +42,7 @@
             return function (clb) {
                 server.listen(server.address, clb);
             };
-        }), clb);
+        }), clb || noop);
     };
 
     var listenFull = function (listener, port, clb) {
@@ -115,7 +117,7 @@
             return function (clb) {
                 server.close(clb);
             };
-        }), clb);
+        }), clb || noop);
     };
 
     var close = function (listener, clb) {
@@ -138,10 +140,15 @@
 
     Util.inherits(Interface, Events.EventEmitter);
 
+    // options:
+    // - tlsCert: {key: <pem string>, cert: <pem string>}
+    //            certificate to use for tls communications
+    // - socketDir: root directory path for the internal unix sockets
     var create = function (options) {
         options = options || {};
+
         var listener = {
-            tlsCert:   options.tlsCert || FakeCert,
+            tlsCert:   options.tlsCert   || FakeCert,
             socketDir: options.socketDir || defaultSocketDir,
         };
 
@@ -152,6 +159,7 @@
         };
 
         listener.iface = new Interface(listener);
+
         return listener.iface;
     };
 
