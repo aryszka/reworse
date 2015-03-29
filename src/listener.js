@@ -8,93 +8,73 @@
     var Path     = require("path");
     var Servers  = require("./servers");
     var Util     = require("util");
+    var Wait     = require("./wait");
 
     var defaultSocketDir        = ".tmp";
     var httpSocketName          = "http";
     var httpsSocketName         = "https";
     var tunnelConnectSocketName = "https-tunnel-connect";
-    var tunnelDataSocketName    = "https-tunnel-data";
-
-    var waitForAll = function (clb, calls) {
-        var counter = 0;
-        var clbi = function () {
-            counter--;
-            if (!counter) {
-                clb();
-            }
-        };
-
-        calls.forEach(function (call) {
-            counter++;
-            call(clbi);
-        });
-    };
+    var fakeCertificateOrigin   = "fakecertificate";
+    var httpFallbackOrigin      = "httpfallback";
 
     var initEnv = function (listener) {
         FsEnv.ensureDir(listener.socketDir);
-        Object.keys(listener.socketPaths).forEach(function (key) {
+        Object.keys(listener.socketPaths).map(function (key) {
             FsEnv.removeIfExists(listener.socketPaths[key]);
         });
     };
 
     var listenFallback = function (listener, port, clb) {
         var http = Servers.createInternalHttp({
-            address:     port,
-            errorOrigin: "http fallback",
-            events:      listener.iface
+            address: port,
+            events:  listener.iface,
+            origin:  "http fallback"
         });
-        http.listen(http.address, clb);
+
         listener.servers = [http];
+        http.listen(http.address, clb);
     };
 
     var listenOnAll = function (servers, clb) {
-        waitForAll(clb, servers.map(function (server) {
+        Wait.forAll(servers.map(function (server) {
             return function (clb) {
                 server.listen(server.address, clb);
             };
-        }));
+        }), clb);
     };
 
     var listenFull = function (listener, port, clb) {
         if (listener.tlsCert === FakeCert) {
             Errors.emit(
                 "no tls certificate provided",
-                "fakecertificate",
+                fakeCertificateOrigin,
                 listener.iface
             );
         }
 
         var http = Servers.createInternalHttp({
-            address:     listener.socketPaths.http,
-            errorOrigin: "internal http",
-            events:      listener.iface
+            address: listener.socketPaths.http,
+            events:  listener.iface,
+            origin:  "internal http"
         });
 
         var https = Servers.createInternalHttp({
-            address:     listener.socketPaths.https,
-            errorOrigin: "internal https",
-            events:      listener.iface,
-            tlsCert:     listener.tlsCert,
-            useTls:      true
-        });
-
-        var tunnelData = Servers.createInternalHttp({
-            address:     listener.socketPaths.tunnelData,
-            errorOrigin: "tunnel data",
-            events:      listener.iface,
-            tlsCert:     listener.tlsCert,
-            useTls:      true
+            address: listener.socketPaths.https,
+            events:  listener.iface,
+            origin:  "internal https",
+            tlsCert: listener.tlsCert,
+            useTls:  true
         });
 
         var tunnelConnect = Servers.createTunnelConnect({
             address:  listener.socketPaths.tunnelConnect,
-            errors:   listener.iface,
-            dataPath: listener.socketPaths.tunnelData
+            events:   listener.iface,
+            dataPath: listener.socketPaths.https
         });
 
         var externalServer = Servers.createExternalServer({
             address:     port,
-            errors:      listener.iface,
+            events:      listener.iface,
             socketPaths: listener.socketPaths
         });
 
@@ -102,7 +82,6 @@
             http,
             https,
             tunnelConnect,
-            tunnelData,
             externalServer
         ];
 
@@ -118,7 +97,12 @@
         }
 
         if (fileErr) {
-            Errors.emit("httpfallback", fileErr, listener.iface);
+            Errors.emit(
+                fileErr,
+                httpFallbackOrigin,
+                listener.iface
+            );
+
             listenFallback(listener, port, clb);
             return;
         }
@@ -127,11 +111,11 @@
     };
 
     var closeAll = function (servers, clb) {
-        waitForAll(clb, servers.map(function (server) {
+        Wait.forAll(servers.map(function (server) {
             return function (clb) {
                 server.close(clb);
             };
-        }));
+        }), clb);
     };
 
     var close = function (listener, clb) {
@@ -164,13 +148,20 @@
         listener.socketPaths = {
             http:          Path.join(listener.socketDir, httpSocketName),
             https:         Path.join(listener.socketDir, httpsSocketName),
-            tunnelConnect: Path.join(listener.socketDir, tunnelConnectSocketName),
-            tunnelData:    Path.join(listener.socketDir, tunnelDataSocketName)
+            tunnelConnect: Path.join(listener.socketDir, tunnelConnectSocketName)
         };
 
         listener.iface = new Interface(listener);
         return listener.iface;
     };
 
-    exports.createServer = create;
+    module.exports = {
+        createServer:            create,
+        defaultSocketDir:        defaultSocketDir,
+        fakeCertificateOrigin:   fakeCertificateOrigin,
+        httpFallbackOrigin:      httpFallbackOrigin,
+        httpSocketName:          httpSocketName,
+        httpsSocketName:         httpsSocketName,
+        tunnelConnectSocketName: tunnelConnectSocketName
+    };
 })();

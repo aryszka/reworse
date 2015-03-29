@@ -13,6 +13,7 @@
             canonicalHeaders[i] = rawHeaders[i].replace(/(^|-)[a-z]/g, function (s) {
                 return s.toUpperCase();
             });
+
             canonicalHeaders[i + 1] = rawHeaders[i + 1];
         }
 

@@ -25,8 +25,11 @@
     };
 
     var emit = function (err, origin, collector) {
-        var args = [].slice.call(arguments, 3);
-        collector.emit.apply(collector, ["error", err, origin].concat(args));
+        collector.emit.apply(
+            collector,
+            ["error", err, origin]
+                .concat([].slice.call(arguments, 3))
+        );
     };
 
     var forward = function (origin, emitter, collector) {

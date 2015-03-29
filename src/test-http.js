@@ -139,7 +139,7 @@
             });
 
             if (body) {
-                body.forEach(function (part) {
+                body.map(function (part) {
                     setTimeout(function () {
                         res.write(part);
                     });
@@ -268,7 +268,7 @@
                     requestDone();
                 });
 
-                options.requestBody.forEach(function (part) {
+                options.requestBody.map(function (part) {
                     req.write(part);
                 });
 

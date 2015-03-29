@@ -8,6 +8,9 @@
     var Net     = require("net");
     var Url     = require("url");
 
+    var externalServerOrigin = "externalserver";
+    var tunnelConnectOrigin  = "tunnelconnect";
+
     var isTunnelConnect = function (data) {
         // "C" from method CONNECT
         return data[0] === 67;
@@ -18,45 +21,56 @@
         return data[0] === 22;
     };
 
+    var externalDataStart = function (socket, data, options) {
+        var relayAddress;
+        var relaySocket;
+        var origin;
+
+        switch (true) {
+        case isTunnelConnect(data):
+            relayAddress = options.socketPaths.tunnelConnect;
+            origin         = externalServerOrigin + "-tunnelconnect";
+            break;
+        case isClientHello(data):
+            relayAddress = options.socketPaths.https;
+            origin         = externalServerOrigin + "-internalhttps";
+            break;
+        default:
+            relayAddress = options.socketPaths.http;
+            origin         = externalServerOrigin + "-internalhttp";
+            break;
+        }
+
+        var relaySocket = Net.connect(relayAddress);
+        Errors.forward(origin, relaySocket, options.events);
+
+        relaySocket.write(data);
+        socket.pipe(relaySocket);
+        relaySocket.pipe(socket);
+    };
+
+    var externalConnection = function (socket, options) {
+        socket.once("data", function (data) {
+            externalDataStart(socket, data, options);
+        });
+    };
+
     var createExternalServer = function (options) {
         // todo: log errors here only in verbose mode,
         // if ECONNRESET on tcp socket
 
         var server = Net.createServer();
-        Errors.forward("external server", server, options.errors);
+        Errors.forward(externalServerOrigin, server, options.events);
 
         server.address = options.address;
-
         server.on("connection", function (socket) {
-            Errors.forward("tcp server socket", socket, options.errors);
+            Errors.forward(
+                externalServerOrigin + "-socket",
+                socket,
+                options.events
+            );
 
-            socket.once("data", function (data) {
-                var forwardAddress;
-                var forwardSocket;
-                var errorOrigin;
-
-                switch (true) {
-                case isTunnelConnect(data):
-                    forwardAddress = options.socketPaths.tunnelConnect;
-                    errorOrigin    = "tcp to tunnel unix socket";
-                    break;
-                case isClientHello(data):
-                    forwardAddress = options.socketPaths.https;
-                    errorOrigin    = "tcp to https unix socket";
-                    break;
-                default:
-                    forwardAddress = options.socketPaths.http;
-                    errorOrigin    = "tcp to http unix socket";
-                    break;
-                }
-
-                var forwardSocket = Net.connect(forwardAddress);
-                Errors.forward(errorOrigin || "socket", socket, options.errors);
-
-                forwardSocket.write(data);
-                socket.pipe(forwardSocket);
-                forwardSocket.pipe(socket);
-            });
+            externalConnection(socket, options);
         });
 
         return server;
@@ -71,7 +85,22 @@
         return url;
     };
 
+    var internalRequest = function (req, res, options) {
+        Errors.forward(options.origin + "-request", req, options.events);
+        Errors.forward(options.origin + "-response", res, options.events);
+
+        Headers.conditionMessage(req);
+
+        var url = parseUrl(req);
+        url.protocol = options.useTls ? "https:" : "http:";
+        req.url = Url.format(url);
+
+        options.events.emit("request", req, res);
+    };
+
     var createInternalHttp = function (options) {
+        options = options || {};
+
         var server;
         if (options.useTls) {
             server = Https.createServer(options.tlsCert);
@@ -79,72 +108,70 @@
             server = Http.createServer();
         }
 
-        Errors.forward(options.errorOrigin, server, options.events);
+        Errors.forward(options.origin, server, options.events);
 
         server.address = options.address;
-
         server.on("request", function (req, res) {
-            Errors.forward(options.errorOrigin + " request", req, options.events);
-            Errors.forward(options.errorOrigin + " response", res, options.events);
-
-            Headers.conditionMessage(req);
-
-            var url = parseUrl(req);
-            url.protocol = options.useTls ? "https:" : "http:";
-            req.url = Url.format(url);
-
-            options.events.emit("request", req, res);
+            internalRequest(req, res, options);
         });
 
         return server;
     };
 
+    var tunnelConnection = function (req, socket, options) {
+        var socketClosed     = false;
+        var tunnelDataClosed = false;
+
+        var tunnelData = Net.connect(options.dataPath);
+        Errors.forward(
+            tunnelConnectOrigin + "-data",
+            tunnelData,
+            options.events
+        );
+
+        socket.write(
+            "HTTP/1.1 200 Connection established\r\n" +
+            "Proxy-Agent: reworse\r\n\r\n"
+        );
+
+        socket.on("data", function (data) {
+            if (!tunnelDataClosed) {
+                tunnelData.write(data);
+            }
+        });
+
+        socket.on("end", function () {
+
+            // otherwise unable to close nodejs server
+            socket.destroy();
+
+            socketClosed = true;
+            tunnelData.end();
+        });
+
+        tunnelData.on("data", function (data) {
+            if (!socketClosed) {
+                socket.write(data);
+            }
+        });
+
+        tunnelData.on("end", function () {
+            tunnelDataClosed = true;
+        });
+    };
+
     var createTunnelConnect = function (options) {
-        var errorOrigin = "tunnel connect";
+        var origin = tunnelConnectOrigin;
         var tunnel = Http.createServer();
-        Errors.forward(errorOrigin, tunnel, options.errors);
+
+        Errors.forward(origin, tunnel, options.events);
 
         tunnel.address = options.address;
 
-        tunnel.on("connect", function (req, socket, head) {
-            Errors.forward(errorOrigin + " request", req, options.errors);
-            Errors.forward(errorOrigin + " socket", socket, options.errors);
-
-            var socketClosed     = false;
-            var unixSocketClosed = false;
-            var unixSocket       = Net.connect(options.dataPath);
-
-            Errors.forward("tunnel connect unix socket", unixSocket, options.errors);
-
-            socket.write(
-                "HTTP/1.1 200 Connection established\r\n" +
-                "Proxy-Agent: reworse\r\n\r\n"
-            );
-
-            socket.on("data", function (data) {
-                if (!unixSocketClosed) {
-                    unixSocket.write(data);
-                }
-            });
-
-            socket.on("end", function () {
-
-                // otherwise unable to close nodejs server
-                socket.destroy();
-
-                socketClosed = true;
-                unixSocket.end();
-            });
-
-            unixSocket.on("data", function (data) {
-                if (!socketClosed) {
-                    socket.write(data);
-                }
-            });
-
-            unixSocket.on("end", function () {
-                unixSocketClosed = true;
-            });
+        tunnel.on("connect", function (req, socket) {
+            Errors.forward(origin + "-request", req, options.events);
+            Errors.forward(origin + "-socket", socket, options.events);
+            tunnelConnection(req, socket, options);
         });
 
         return tunnel;
@@ -153,6 +180,8 @@
     module.exports = {
         createExternalServer: createExternalServer,
         createInternalHttp:   createInternalHttp,
-        createTunnelConnect:  createTunnelConnect
+        createTunnelConnect:  createTunnelConnect,
+        externalServerOrigin: externalServerOrigin,
+        tunnelConnectOrigin:  tunnelConnectOrigin
     };
 })();

@@ -1,9 +1,6 @@
 (function () {
     "use strict";
 
-    // var HttpParser = require("http-parser-js");
-    // process.binding("http_parser").HTTPParser = HttpParser.HTTPParser;
-
     process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
     var Errors   = require("./errors");
@@ -50,7 +47,11 @@
         req.on("data", function (data) {
             preq.write(data, "binary");
             receivedLength += data.length;
-            if (!requestEndCalled && contentLength > 0 && receivedLength >= contentLength) {
+            if (
+                !requestEndCalled &&
+                contentLength > 0 &&
+                receivedLength >= contentLength
+            ) {
                 preq.end();
                 requestEndCalled = true;
             }
@@ -95,7 +96,10 @@
 
     var mapResponse = function (pres, res) {
         Headers.conditionMessage(pres);
-        res.writeHead(pres.statusCode, rawHeaders(pres.rawHeaders));
+        res.writeHead(
+            pres.statusCode,
+            rawHeaders(pres.rawHeaders)
+        );
 
         if (noData(pres)) {
             res.end();
@@ -112,13 +116,19 @@
 
     var proxyError = function (res, url) {
         res.writeHead(418, {"Content-Type": "text/plain"});
-        res.write("error: probably, proxy could not resolve host " + url.host + "\n");
+
+        res.write(
+            "error: probably, proxy could not resolve host " +
+            url.host +
+            "\n"
+        );
+
         res.end();
     };
 
     var applyFilters = function (filters, req, res) {
         var handled = false;
-        filters.forEach(function (filter) {
+        filters.map(function (filter) {
             handled = filter(req, res, handled) || handled;
         });
 
@@ -178,7 +188,7 @@
         var paths   = Flags.get("filter");
         var filters = [];
 
-        paths.forEach(function (path) {
+        paths.map(function (path) {
             if (!Path.isAbsolute(path)) {
                 path = Path.join(process.cwd(), path);
             }
@@ -204,7 +214,12 @@
         }
 
         initFlags();
-        return createServer(Listener, Flags.get("port"), getFilters(requireFilter), clb);
+        return createServer(
+            Listener,
+            Flags.get("port"),
+            getFilters(requireFilter),
+            clb
+        );
     };
 
     run.defaultPort = defaultPort;
