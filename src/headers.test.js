@@ -112,4 +112,13 @@ suite("headers", function () {
         assert(message.rawHeaders[1] === "some header value");
         assert(message.headers["some-header"] === "some header value");
     });
+
+    test("maps raw headers verbatim", function () {
+        var mapped = Headers.mapRaw([
+            "Some-Header-0", "some value 0",
+            "Some-Header-1", "some value 1"
+        ]);
+        assert(mapped["Some-Header-0"] === "some value 0");
+        assert(mapped["Some-Header-1"] === "some value 1");
+    });
 });

@@ -29,15 +29,15 @@
         switch (true) {
         case isTunnelConnect(data):
             relayAddress = options.socketPaths.tunnelConnect;
-            origin         = externalServerOrigin + "-tunnelconnect";
+            origin       = externalServerOrigin + "-tunnelconnect";
             break;
         case isClientHello(data):
             relayAddress = options.socketPaths.https;
-            origin         = externalServerOrigin + "-internalhttps";
+            origin       = externalServerOrigin + "-internalhttps";
             break;
         default:
             relayAddress = options.socketPaths.http;
-            origin         = externalServerOrigin + "-internalhttp";
+            origin       = externalServerOrigin + "-internalhttp";
             break;
         }
 

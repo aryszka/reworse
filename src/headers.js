@@ -58,8 +58,18 @@
         message.rawHeaders = newHeaders;
     };
 
+    var mapRaw = function (raw) {
+        var headers = {};
+        for (var i = 0; i < raw.length; i += 2) {
+            headers[raw[i]] = raw[i + 1];
+        }
+
+        return headers;
+    };
+
     module.exports = {
         canonicalHeaders: canonicalHeaders,
-        conditionMessage: conditionMessage
+        conditionMessage: conditionMessage,
+        mapRaw:           mapRaw
     };
 })();
