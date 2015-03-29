@@ -1,13 +1,14 @@
 (function () {
     "use strict";
 
-    var Util   = require("util");
-    var Http   = require("http");
-    var Https  = require("https");
-    var Tls    = require("tls");
-    var assert = require("assert");
-    var main   = require("./main");
-    var Cert   = require("./fake-cert");
+    var Util    = require("util");
+    var Headers = require("./headers");
+    var Http    = require("http");
+    var Https   = require("https");
+    var Tls     = require("tls");
+    var assert  = require("assert");
+    var main    = require("./main");
+    var Cert    = require("./fake-cert");
 
     var ProxyAgent = function (options) {
         Https.Agent.call(this, options);
@@ -76,8 +77,8 @@
     Tunneling.request = Https.request;
 
     var assertHeaders = function (expect, test) {
-        expect = main.rawHeaders(expect);
-        test   = main.rawHeaders(test);
+        expect = Headers.mapRaw(expect);
+        test   = Headers.mapRaw(test);
 
         for (var key in expect) {
             assert(expect[key] === test[key]);
@@ -174,7 +175,7 @@
             agent:          undefined,
             headers:        []
         });
-        options.headers = main.rawHeaders(options.headers);
+        options.headers = Headers.mapRaw(options.headers);
 
         var req = options.Implementation.request(options);
         req.on("response", function (res) {

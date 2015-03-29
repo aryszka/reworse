@@ -10,121 +10,10 @@
     var Https    = require("https");
     var Listener = require("./listener");
     var Path     = require("path");
+    var Proxy    = require("./proxy");
     var Url      = require("url");
 
     var defaultPort = 9000;
-
-    var rawHeaders = function (list) {
-        // todo: there should be no need to call this here
-        list = Headers.canonicalHeaders(list);
-        var headers = {};
-        for (var i = 0; i < list.length; i += 2) {
-            headers[list[i]] = list[i + 1];
-        }
-
-        return headers;
-    };
-
-    var mapRequest = function (req, parsedUrl) {
-        var implementation = parsedUrl.protocol === "https:" ? Https : Http;
-        var contentLength = 0;
-        if (req.headers["content-length"]) {
-            contentLength = parseInt(req.headers["content-length"], 10);
-        }
-
-        var receivedLength = 0;
-        var requestEndCalled = false;
-        var preq = implementation.request({
-            method:   req.method,
-            hostname: parsedUrl.hostname,
-            port:     parsedUrl.port,
-            path:     parsedUrl.path,
-            headers:  rawHeaders(req.rawHeaders)
-        });
-
-        Errors.handle("proxy request", preq, parsedUrl.protocol);
-
-        req.on("data", function (data) {
-            preq.write(data, "binary");
-            receivedLength += data.length;
-            if (
-                !requestEndCalled &&
-                contentLength > 0 &&
-                receivedLength >= contentLength
-            ) {
-                preq.end();
-                requestEndCalled = true;
-            }
-        });
-
-        req.on("end", function () {
-            if (!requestEndCalled && contentLength > 0) {
-                preq.end();
-                requestEndCalled = true;
-            }
-        });
-
-        return preq;
-    };
-
-    var noContent = function (res) {
-        return res.headers["content-length"] === 0;
-    };
-
-    var noDataStatus = function (res) {
-        switch (res.statusCode) {
-        case 204:
-        case 205:
-        case 304:
-            return true;
-        default:
-            return false;
-        }
-    };
-
-    var noData = function (res) {
-        if (noContent(res)) {
-            return true;
-        }
-
-        if (noDataStatus(res)) {
-            return true;
-        }
-
-        return false;
-    };
-
-    var mapResponse = function (pres, res) {
-        Headers.conditionMessage(pres);
-        res.writeHead(
-            pres.statusCode,
-            rawHeaders(pres.rawHeaders)
-        );
-
-        if (noData(pres)) {
-            res.end();
-        } else {
-            pres.on("data", function (data) {
-                res.write(data, "binary");
-            });
-
-            pres.on("end", function () {
-                res.end();
-            });
-        }
-    };
-
-    var proxyError = function (res, url) {
-        res.writeHead(418, {"Content-Type": "text/plain"});
-
-        res.write(
-            "error: probably, proxy could not resolve host " +
-            url.host +
-            "\n"
-        );
-
-        res.end();
-    };
 
     var applyFilters = function (filters, req, res) {
         var handled = false;
@@ -135,35 +24,21 @@
         return handled;
     };
 
-    var proxy = function (req, res, filters) {
+    var proxy = function (req, res, prx, filters) {
         var handled = applyFilters(filters, req, res);
         if (handled) {
             return;
         }
 
-        var url  = Url.parse(req.url);
-        var preq = mapRequest(req, url);
-
-        preq.on("error", function (err) {
-            proxyError(res, url);
-        });
-
-        preq.on("response", function (pres) {
-            Errors.handle("proxy response", pres);
-            mapResponse(pres, res);
-        });
-
-        // todo: figure this better
-        if (preq.method !== "POST" && preq.method !== "PUT") {
-            preq.end();
-        }
+        prx.handle(req, res);
     };
 
     var createServer = function (implementation, port, filters, clb) {
         var server = implementation.createServer();
+        var prx = Proxy.create();
 
         server.on("request", function (req, res) {
-            proxy(req, res, filters);
+            proxy(req, res, prx, filters);
         });
 
         Errors.handle("listener error", server);
@@ -223,7 +98,6 @@
     };
 
     run.defaultPort = defaultPort;
-    run.rawHeaders  = rawHeaders;
     run.run         = run;
 
     module.exports = run;

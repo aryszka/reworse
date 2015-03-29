@@ -3,6 +3,7 @@ suite("main", function () {
 
     var assert   = require("assert");
     var Flags    = require("flags");
+    var Headers  = require("./headers");
     var main     = require("./main");
     var Url      = require("url");
     var Path     = require("path");
@@ -130,7 +131,7 @@ suite("main", function () {
             ]
         };
 
-        testRequestOptions.headers = main.rawHeaders(testRequestOptions.rawHeaders);
+        testRequestOptions.headers = Headers.mapRaw(testRequestOptions.rawHeaders);
 
         Http.request = function (options) {
             assert(options.method         === testRequestOptions.method);
@@ -268,7 +269,7 @@ suite("main", function () {
             ]
         };
 
-        presponse.headers = main.rawHeaders(presponse.rawHeaders);
+        presponse.headers = Headers.mapRaw(presponse.rawHeaders);
 
         var response = {
             on: function () {},
