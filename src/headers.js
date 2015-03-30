@@ -41,9 +41,9 @@
             // close
             // todo: handle keep-alive
             case names.connection:
-                newHeaders.push("Connection");
+                newHeaders.push(names.connection);
                 newHeaders.push("close");
-                message.headers["connection"] = "close";
+                message.headers[names.connection.toLowerCase()] = "close";
                 break;
 
             // canonical name, verbatim value

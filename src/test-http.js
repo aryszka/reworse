@@ -1,14 +1,18 @@
 (function () {
     "use strict";
 
-    var Util    = require("util");
-    var Headers = require("./headers");
-    var Http    = require("http");
-    var Https   = require("https");
-    var Tls     = require("tls");
-    var assert  = require("assert");
-    var Main    = require("./main");
-    var Cert    = require("./fake-cert");
+    var assert   = require("assert");
+    var FakeCert = require("./fake-cert");
+    var Http     = require("http");
+    var Https    = require("https");
+    var Tls      = require("tls");
+    var Url      = require("url");
+    var Util     = require("util");
+    var Wait     = require("./wait");
+
+    var httpPort    = 9090;
+    var httpsPort   = 4545;
+    var reworsePort = 9999;
 
     var ProxyAgent = function (options) {
         Https.Agent.call(this, options);
@@ -27,10 +31,8 @@
             headers: {host: requestHost}
         });
 
-        var tls;
-
         req.on("connect", function (req, socket, head) {
-            tls = Tls.connect({socket: socket}, function () {
+            var tls = Tls.connect({socket: socket}, function () {
                 clb(null, tls);
             });
         });
@@ -66,355 +68,166 @@
         }.bind(this));
     };
 
-    var Tunneling = function (options) {
-        Https.Server.call(this, options);
-    };
+    var contentHeaders = function (chunks, headers) {
+        var contentHeaders = {
+            "Content-Length": String(Buffer.concat(chunks).length),
+            "Content-Type":   "text/plain"
+        };
 
-    Util.inherits(Tunneling, Https.Server);
-
-    Tunneling.Server  = Tunneling;
-    Tunneling.Agent   = ProxyAgent;
-    Tunneling.request = Https.request;
-
-    var assertHeaders = function (expect, test) {
-        expect = Headers.mapRaw(expect);
-        test   = Headers.mapRaw(test);
-
-        for (var key in expect) {
-            assert(expect[key] === test[key]);
-        }
-    };
-
-    var getResponseBody = function (options, requestIndex) {
-        return (
-            (options.bodies && (options.bodies.length > requestIndex)) ?
-            options.bodies[requestIndex] :
-            (options.body || [])
-        );
-    };
-
-    var applyDefaults = function (values, defaults) {
-        values = values || {};
-        for (var key in defaults) {
-            if (!(key in values)) {
-                values[key] = defaults[key];
+        if (headers) {
+            for (var header in headers) {
+                contentHeaders[header] = headers[header];
             }
         }
 
-        return values;
+        return contentHeaders;
     };
 
-    var isHttps = function (Implementation) {
-        return (
-            Implementation.prototype instanceof Https.Server ||
-            Implementation === Https.Server
-        );
-    };
+    var send = function (message, dataChunks, clb) {
+        dataChunks = dataChunks || [];
+        clb        = clb || function () {};
 
-    var createTestService = function (options) {
-        options = applyDefaults(options, {
-            Implementation: Http.Server,
-            response: applyDefaults(options.response, {
-                statusCode:  200,
-                contentType: "text/plain",
-                body:        [],
-                bodies:      []
-            })
+        var chunkSends = dataChunks.map(function (chunk) {
+            return function (clb) {
+                setTimeout(function () {
+                    message.write(chunk);
+                    clb();
+                });
+            };
         });
 
-        var service;
-        var requestCounter = 0;
-
-        if (isHttps(options.Implementation)) {
-            service = new options.Implementation(Cert);
-        } else {
-            service = new options.Implementation;
-        }
-
-        service.on("request", function (req, res) {
-            var body = getResponseBody(options.response, requestCounter++);
-
-            res.writeHeader(options.response.statusCode, {
-                "Content-Type":   options.response.contentType,
-                "Content-Length": body && String(body.join("").length) || "0"
-            });
-
-            if (body) {
-                body.map(function (part) {
-                    setTimeout(function () {
-                        res.write(part);
-                    });
-                });
-            }
-
+        var done = function () {
             setTimeout(function () {
-                res.end();
+                message.end();
+                clb();
             });
+        };
 
-            var requestBody = "";
+        Wait.forNext(chunkSends.concat(done));
+    };
+
+    var sendResponse = function (res, headers, dataChunks, clb) {
+        headers = contentHeaders(dataChunks, headers);
+        res.writeHead(200, headers);
+        send(res, dataChunks, clb);
+    };
+
+    var testServer = function (options, clb) {
+        options = options || {};
+        clb     = clb || function () {};
+
+        options.port = options.port || (options.useTls ? httpsPort : httpPort);
+
+        var server = options.useTls ?
+            Https.createServer(FakeCert) :
+            Http.createServer();
+
+        server.on("request", function (req, res) {
+            var receivedData = [];
 
             req.on("data", function (data) {
-                requestBody += data.toString();
+                receivedData.push(data);
             });
 
             req.on("end", function () {
-                this.emit("test-request-end", requestBody);
-            }.bind(this));
+                server.emit("requestcomplete", req, res, Buffer.concat(receivedData));
+                if (!options.autoResponseDisabled) {
+                    sendResponse(res, options.headers, options.dataChunks || receivedData);
+                }
+            });
         });
 
-        return service;
+        server.listen(options.port, function () {
+            clb(server);
+        });
+
+        return server;
     };
 
     var testRequest = function (options) {
-        options = applyDefaults(options, {
-            Implementation: Http.Server,
-            hostname:       "localhost",
-            port:           8989,
-            method:         "GET",
-            path:           "/",
-            agent:          undefined,
-            headers:        []
-        });
-        options.headers = Headers.mapRaw(options.headers);
+        options = options || {};
 
-        var req = options.Implementation.request(options);
+        options.method   = options.method || "GET";
+        options.hostname = options.hostname || "localhost";
+        options.port     = options.port || reworsePort;
+        options.headers  = options.headers || {};
+        options.useTls   = options.useTls || options.tunneling;
+
+        options.headers["Accept"] = options.headers["Accept"] || "*/*";
+
+        options.headers["Host"] = options.headers["Host"] ||
+            ("localhost:" + (options.useTls ? httpsPort : httpPort));
+
+        var Implementation = options.useTls ? Https : Http;
+
+        var agentOptions = function () {
+            var agentOptions = {};
+
+            if (options.keepAlive) {
+                agentOptions.keepAlive      = true;
+                agentOptions.maxSockets     = 1;
+                agentOptions.maxFreeSockets = 1;
+            }
+
+            if (options.tunneling) {
+                agentOptions.host = options.hostname;
+                agentOptions.port = options.port;
+            }
+
+            return agentOptions;
+        };
+
+        var agentType = function () {
+            return options.tunneling ? ProxyAgent : Implementation.Agent;
+        };
+
+        if (options.keepAlive || options.tunneling) {
+            var Agent = agentType();
+            options.agent = new Agent(agentOptions());
+        }
+
+        var req = Implementation.request(options);
+
         req.on("response", function (res) {
-            var body = "";
-
-            res.on("data", function (data) {
-                body += data.toString();
-            });
-
+            var receivedData = [];
+            res.on("data", receivedData.push.bind(receivedData));
             res.on("end", function () {
-                req.emit("test-request-done", body);
+                req.emit("responsecomplete", res, Buffer.concat(receivedData));
             });
         });
 
         return req;
     };
 
-    var testDone = function (proxy, service, done) {
-        service.close(function () {
-            proxy.close(function () {
-                done();
-            });
-        });
+    var assertHeaders = function (message, headers, ignore) {
+        ignore = ignore || [];
+        assert(Object.keys(headers).every(function (header) {
+            return (
+                ignore.indexOf(header) >= 0 ||
+                headers[header] === message.headers[header.toLowerCase()]
+            );
+        }));
     };
 
-    var testRoundtrip = function (options) {
-        options = applyDefaults(options, {
-            Implementation: Http,
-            servicePort:    8989,
-            method:         "GET",
-            body:           [],
-            bodies:         [],
-            requestBody:    [],
-            done:           function () {},
-            agent:          undefined,
-            requestCount:   1
-        });
-
-        options = applyDefaults(options, {
-            requestPort: options.servicePort,
-
-            headers: [
-                "User-Agent", "reworse test",
-                "Host",       "localhost:" + options.servicePort,
-                "Accept",     "*/*"
-            ]
-        });
-
-        Main.run(function (proxy) {
-            var service = createTestService({
-                Implementation: options.Implementation.Server,
-
-                response: {
-                    body:   options.body,
-                    bodies: options.bodies
-                }
-            });
-
-            var requestCounter = 0;
-
-            var requestDone = function () {
-                requestCounter--;
-                if (requestCounter === 0) {
-                    testDone(proxy, service, options.done);
-                }
-            };
-
-            var request = function (index) {
-                var req = testRequest({
-                    Implementation: options.Implementation,
-                    port:           options.requestPort,
-                    headers:        options.headers,
-                    agent:          options.agent,
-                    method:         options.method
-                });
-
-                var expectedBody = getResponseBody(options, index);
-
-                requestCounter++;
-
-                req.on("response", function (res) {
-                    assert(res.statusCode === 200);
-                    assertHeaders([
-                        "Content-Length", String(expectedBody.join("").length),
-                        "Content-Type",   "text/plain"
-                    ], res.rawHeaders);
-                });
-
-                req.on("test-request-done", function (body) {
-                    assert(body === expectedBody.join(""));
-                    requestDone();
-                });
-
-                options.requestBody.map(function (part) {
-                    req.write(part);
-                });
-
-                req.end();
-            };
-
-            var requestBodyLength = options.requestBody.join("").length;
-
-            if (requestBodyLength) {
-                options.headers.push("Content-Type");
-                options.headers.push("text/plain");
-                options.headers.push("Content-Length");
-                options.headers.push(String(requestBodyLength));
-            }
-
-            service.on("request", function (req) {
-                assert(req.method === options.method);
-                assert(req.url === "/");
-                assertHeaders(options.headers, req.rawHeaders);
-            });
-
-            service.on("test-request-end", function (requestBody) {
-                assert(requestBody === options.requestBody.join(""));
-            });
-
-            service.listen(options.servicePort, function () {
-                var requestCount = options.requestCount;
-                for (var i = 0; i < requestCount; i++) {
-                    request(i);
-                }
-            });
-        });
+    var chunksToString = function (chunks) {
+        return Buffer.concat(chunks).toString();
     };
 
-    var testGetRoundtrip = function (Implementation, servicePort, done) {
-        testRoundtrip({
-            Implementation: Implementation,
-            servicePort:    servicePort,
-            requestPort:    Main.defaultPort,
-            done:           done,
-
-            body: [
-                "response part 0",
-                "response part 1"
-            ]
-        });
+    var assertData = function (chunks0, chunks1) {
+        assert(chunksToString(chunks0) === chunksToString(chunks1));
     };
 
-    var testPostRoundtrip = function (Implementation, servicePort, done) {
-        testRoundtrip({
-            Implementation: Implementation,
-            servicePort:    servicePort,
-            requestPort:    Main.defaultPort,
-            done:           done,
-            method:         "POST",
-
-            requestBody: [
-                "request part 0",
-                "request part 1"
-            ],
-
-            body: [
-                "response part 0",
-                "response part 1"
-            ]
-        });
+    var assertPath = function (url, path) {
+        assert(path === Url.parse(url).path);
     };
 
-    var testKeepAliveSession = function (Implementation, servicePort, done) {
-        // note:
-        // the current version strips off keep-alive
-        // headers, but it still should be able to
-        // serve such requests.
-
-        testRoundtrip({
-            Implementation: Implementation,
-            servicePort:    servicePort,
-            requestPort:    Main.defaultPort,
-            done:           done,
-            requestCount:   3,
-
-            agent: new Implementation.Agent({
-                keepAlive:      true,
-                maxSockets:     1,
-                maxFreeSockets: 1
-            }),
-
-            bodies: [[
-                "test response 0 part 0",
-                "test response 0 part 1",
-            ], [
-                "test response 11 part 01",
-                "test response 11 part 11",
-            ], [
-                "test response 222 part 022",
-                "test response 222 part 122"
-            ]]
-        });
+    module.exports = {
+        assertData:    assertData,
+        assertHeaders: assertHeaders,
+        assertPath:    assertPath,
+        request:       testRequest,
+        reworsePort:   reworsePort,
+        send:          send,
+        server:        testServer
     };
-
-    var testGetTunneling = function (servicePort, done) {
-        testRoundtrip({
-            Implementation: Tunneling,
-            servicePort:    servicePort,
-            done:           done,
-
-            agent: new Tunneling.Agent({
-                host: "localhost",
-                port: Main.defaultPort
-            }),
-
-            body: [
-                "response part 0",
-                "response part 1"
-            ]
-        });
-    };
-
-    var testPostTunneling = function (servicePort, done) {
-        testRoundtrip({
-            Implementation: Tunneling,
-            servicePort:    servicePort,
-            done:           done,
-            method:         "POST",
-
-            agent: new Tunneling.Agent({
-                host: "localhost",
-                port: Main.defaultPort
-            }),
-
-            requestBody: [
-                "request part 0",
-                "request part 1"
-            ],
-
-            body: [
-                "response part 0",
-                "response part 1"
-            ]
-        });
-    };
-
-    exports.testGetRoundtrip     = testGetRoundtrip;
-    exports.testPostRoundtrip    = testPostRoundtrip;
-    exports.testKeepAliveSession = testKeepAliveSession;
-    exports.testGetTunneling     = testGetTunneling;
-    exports.testPostTunneling    = testPostTunneling;
 })();

@@ -35,7 +35,7 @@
 
         initFlags();
 
-        options.port               = Flags.get("port");
+        options.port               = options.port || Flags.get("port");
         options.filters            = options.filters || {};
         options.filters.paths      = options.filters.paths || Flags.get("filter");
         options.listener           = options.listener || {};

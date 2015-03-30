@@ -21,7 +21,19 @@
         });
     };
 
+    var waitForNext = function (calls) {
+        if (!calls.length) {
+            return;
+        }
+
+        var call = calls.shift();
+        call(function () {
+            waitForNext(calls);
+        });
+    };
+
     module.exports = {
-        forAll: waitForAll
+        forAll:  waitForAll,
+        forNext: waitForNext
     };
 })();

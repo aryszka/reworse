@@ -17,8 +17,6 @@
     var fakeCertificateOrigin   = "fakecertificate";
     var httpFallbackOrigin      = "httpfallback";
 
-    var noop = function () {};
-
     var initEnv = function (listener) {
         FsEnv.ensureDir(listener.socketDir);
         Object.keys(listener.socketPaths).map(function (key) {
@@ -30,7 +28,7 @@
         var http = Servers.createInternalHttp({
             address: port,
             events:  listener.iface,
-            origin:  "http fallback"
+            origin:  httpFallbackOrigin
         });
 
         listener.servers = [http];
@@ -42,7 +40,11 @@
             return function (clb) {
                 server.listen(server.address, clb);
             };
-        }), clb || noop);
+        }), function () {
+            if (clb) {
+                clb();
+            }
+        });
     };
 
     var listenFull = function (listener, port, clb) {
@@ -117,7 +119,11 @@
             return function (clb) {
                 server.close(clb);
             };
-        }), clb || noop);
+        }), function () {
+            if (clb) {
+                clb();
+            }
+        });
     };
 
     var close = function (listener, clb) {
