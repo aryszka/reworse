@@ -101,8 +101,8 @@
         var listener = Listener.createServer(options.listener);
         var prx      = Proxy.create();
 
-        Errors.handle("listener", listener);
-        Errors.handle("proxy", prx);
+        Errors.handle("listener", listener, options.errorHandler);
+        Errors.handle("proxy", prx, options.errorHandler);
 
         listener.on("request", function (req, res) {
             if (applyFilters(filters, req, res)) {

@@ -1,6 +1,7 @@
 suite("reworse", function () {
     "use strict";
 
+    var Listener = require("./listener");
     var Main     = require("./main");
     var mockArgs = require("./mock-args");
     var TestHttp = require("./test-http");
@@ -38,6 +39,12 @@ suite("reworse", function () {
         Wait.forAll([startHttp, startReworse], onStarted);
     };
 
+    var reworseErrorHandler = function (err, origin, subOrigin) {
+        if (origin !== "listener" || subOrigin !== Listener.fakeCertificateOrigin) {
+            console.error.apply(console, [].slice.call(arguments));
+        }
+    };
+
     var testRoundtrip = function (options, clb) {
         var chunk0             = new Buffer("123");
         var chunk1             = new Buffer("456");
@@ -46,7 +53,11 @@ suite("reworse", function () {
         var requestHeaders     = {"Test-Request-Header": "test request value"};
         var responseHeaders    = {"Test-Response-Header": "test response value"};
         var responseDataChunks = [chunk1, chunk0];
-        var reworseOptions     = {port: TestHttp.reworsePort};
+
+        var reworseOptions = {
+            errorHandler: reworseErrorHandler,
+            port:         TestHttp.reworsePort
+        };
 
         var requestOptions = {
             headers:   requestHeaders,
@@ -97,7 +108,11 @@ suite("reworse", function () {
         var receivedData    = new Buffer("");
         var requestHeaders  = {"Test-Request-Header": "test request value"};
         var responseHeaders = {"Test-Response-Header": "test response value"};
-        var reworseOptions  = {port: TestHttp.reworsePort};
+
+        var reworseOptions = {
+            errorHandler: reworseErrorHandler,
+            port:         TestHttp.reworsePort
+        };
 
         var postDataChunks = [
             [new Buffer("123"), new Buffer("456")],
