@@ -40,7 +40,7 @@ suite("reworse", function () {
     };
 
     var reworseErrorHandler = function (err, origin, subOrigin) {
-        if (origin !== "listener" || subOrigin !== Listener.fakeCertificateOrigin) {
+        if (origin !== ("listener:" + Listener.fakeCertificateOrigin)) {
             console.error.apply(console, [].slice.call(arguments));
         }
     };
@@ -49,7 +49,6 @@ suite("reworse", function () {
         var chunk0             = new Buffer("123");
         var chunk1             = new Buffer("456");
         var postDataChunks     = [chunk0, chunk1];
-        var receivedData       = new Buffer("");
         var requestHeaders     = {"Test-Request-Header": "test request value"};
         var responseHeaders    = {"Test-Response-Header": "test response value"};
         var responseDataChunks = [chunk1, chunk0];
@@ -105,7 +104,6 @@ suite("reworse", function () {
     };
 
     var testKeepAliveSession = function (options, clb) {
-        var receivedData    = new Buffer("");
         var requestHeaders  = {"Test-Request-Header": "test request value"};
         var responseHeaders = {"Test-Response-Header": "test response value"};
 
@@ -125,12 +123,13 @@ suite("reworse", function () {
             keepAlive: true,
             method:    "POST",
             path:      "/testpath",
-            useTls:    options.useTls
+            useTls:    options.useTls,
+            tunneling: options.tunneling
         };
 
         var serverOptions = {
             headers: responseHeaders,
-            useTls:  options.useTls
+            useTls:  options.useTls || options.tunneling
         };
 
         var assertRequest = function (req, res, data) {
@@ -138,14 +137,17 @@ suite("reworse", function () {
             TestHttp.assertHeaders(req, requestOptions.headers, ["Host"]);
         };
 
+        var assertResponse = function (requestDataChunks, res, data) {
+            TestHttp.assertHeaders(res, responseHeaders);
+            TestHttp.assertData(requestDataChunks, [data]);
+        };
+
         var makeRequest = function (dataChunks) {
             return function (clb) {
                 var request = TestHttp.request(requestOptions);
 
                 request.on("responsecomplete", function (res, data) {
-                    TestHttp.assertHeaders(res, responseHeaders);
-                    TestHttp.assertData(dataChunks, [data]);
-
+                    assertResponse(dataChunks, res, data);
                     clb();
                 });
 
@@ -204,5 +206,9 @@ suite("reworse", function () {
 
     test("post roundtrip over tunnel", function (done) {
         testRoundtrip({post: true, tunneling: true}, done);
+    });
+
+    test("keep-alive session over tunnel", function (done) {
+        testKeepAliveSession({tunneling: true}, done);
     });
 });

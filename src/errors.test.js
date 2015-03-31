@@ -5,66 +5,77 @@ suite("errors", function () {
     var Errors = require("./errors");
     var Events = require("events");
 
-    test("logs errors to console", function (done) {
-        var stderr = console.error;
-        var emitter = new Events.EventEmitter();
+    var stderr;
 
-        console.error = function (err, origin, arg0, arg1) {
-            console.error = stderr;
-            assert(err === "test error");
-            assert(origin === "test origin");
-            assert(arg0 === "test arg 0");
-            assert(arg1 === "test arg 1");
+    setup(function () {
+        stderr = console.error;
+    });
+
+    teardown(function () {
+        console.error = stderr;
+    });
+
+    test("logs errors to console", function (done) {
+        var source     = new Events.EventEmitter;
+        var testError  = new Error("test error");
+        var testOrigin = "test origin";
+
+        console.error = function (err, origin) {
+            assert(err === testError);
+            assert(err.origin === testOrigin);
+            assert(origin === testOrigin);
             done();
         };
 
-        Errors.handle("test origin", emitter, "test arg 0");
-        emitter.emit("error", "test error", "test arg 1");
+        Errors.handle(source, testOrigin);
+        source.emit("error", testError);
     });
 
     test("handles errors with custom handler", function (done) {
-        var emitter = new Events.EventEmitter();
-        var handler = function (err, origin, arg0, arg1) {
-            assert(err === "test error");
-            assert(origin === "test origin");
-            assert(arg0 === "test arg 0");
-            assert(arg1 === "test arg 1");
+        var source     = new Events.EventEmitter();
+        var testError  = new Error("test error");
+        var testOrigin = "test origin";
+
+        var handler = function (err, origin) {
+            assert(err === testError);
+            assert(err.origin === testOrigin);
+            assert(origin === testOrigin);
             done();
         };
-        Errors.handle("test origin", emitter, handler, "test arg 0");
-        emitter.emit("error", "test error", "test arg 1");
+
+        Errors.handle(source, testOrigin, handler);
+        source.emit("error", testError);
     });
 
-    test("emits erorr", function (done) {
-        var collector = new Events.EventEmitter();
-        collector.on("error", function (err, origin, testArg) {
-            assert(err === "test error");
-            assert(origin === "test origin");
-            assert(testArg === "test arg");
+    test("emits error", function (done) {
+        var target     = new Events.EventEmitter();
+        var testError  = new Error("test error");
+        var testOrigin = "test origin";
+
+        target.on("error", function (err, origin) {
+            assert(err === testError);
+            assert(err.origin === testOrigin);
+            assert(origin === testOrigin);
             done();
         });
 
-        Errors.emit(
-            "test error",
-            "test origin",
-            collector,
-            "test arg"
-        );
+        Errors.emit(target, testError, testOrigin);
     });
 
-    test("forwards errors from emitter to collector", function (done) {
-        var emitter   = new Events.EventEmitter();
-        var collector = new Events.EventEmitter();
+    test("maps errors from emitter to collector", function (done) {
+        var source     = new Events.EventEmitter();
+        var target     = new Events.EventEmitter();
+        var testError  = new Error("test error");
+        var testOrigin = "test origin";
 
-        collector.on("error", function (err, origin, arg0, arg1) {
-            assert(err === "test error");
-            assert(origin === "test origin");
-            assert(arg0 === "test arg 0");
-            assert(arg1 === "test arg 1");
+        target.on("error", function (err, origin) {
+            assert(err === testError);
+            assert(err.origin === testOrigin);
+            assert(origin === testOrigin);
             done();
         });
 
-        Errors.forward("test origin", emitter, collector, "test arg 0");
-        emitter.emit("error", "test error", "test arg 1");
+        Errors.map(source, target, testOrigin);
+        source.emit("error", testError);
     });
 });

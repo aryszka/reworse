@@ -180,7 +180,7 @@ suite("main", function () {
     });
 
     test("handles errors on listener", function (done) {
-        var testError = "test error";
+        var testError = new Error("test error");
 
         mockListener(function (listener) {
             setTimeout(function () {
@@ -189,6 +189,7 @@ suite("main", function () {
         });
 
         mockStderr(function (msg, origin) {
+            console.log(msg, origin);
             assert(msg === testError);
             assert(origin === "listener");
 
@@ -199,7 +200,7 @@ suite("main", function () {
     });
 
     test("handles errors on proxy", function (done) {
-        var testError = "test error";
+        var testError = new Error("test error");
 
         mockProxy(function (proxy) {
             setTimeout(function () {

@@ -22,7 +22,7 @@
             headers:  Headers.mapRaw(rawHeaders)
         });
 
-        Errors.forward(errorOrigin + "-proxyrequest", preq, proxy, url);
+        Errors.map(preq, proxy, errorOrigin + "-proxyrequest");
 
         return preq;
     };
@@ -114,13 +114,8 @@
         if (noData(pres)) {
             res.end();
         } else {
-            pres.on("data", function (data) {
-                res.write(data, "binary");
-            });
-
-            pres.on("end", function () {
-                res.end();
-            });
+            pres.on("data", res.write.bind(res));
+            pres.on("end", res.end.bind(res));
         }
     };
 
@@ -132,7 +127,7 @@
         });
 
         preq.on("response", function (pres) {
-            Errors.forward(errorOrigin, pres, proxy);
+            Errors.map(pres, proxy, errorOrigin);
             mapResponse(pres, res);
         });
     };

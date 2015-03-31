@@ -42,7 +42,7 @@
         }
 
         var relaySocket = Net.connect(relayAddress);
-        Errors.forward(origin, relaySocket, options.events);
+        Errors.map(relaySocket, options.events, origin);
 
         relaySocket.write(data);
         socket.pipe(relaySocket);
@@ -57,18 +57,18 @@
 
     var createExternalServer = function (options) {
         // todo: log errors here only in verbose mode,
-        // if ECONNRESET on tcp socket
+        //       if ECONNRESET on tcp socket
 
         var server = Net.createServer();
-        Errors.forward(externalServerOrigin, server, options.events);
+        Errors.map(server, options.events, externalServerOrigin);
 
         server.address = options.address;
 
         server.on("connection", function (socket) {
-            Errors.forward(
-                externalServerOrigin + "-socket",
+            Errors.map(
                 socket,
-                options.events
+                options.events,
+                externalServerOrigin + "-socket"
             );
 
             externalConnection(socket, options);
@@ -88,9 +88,6 @@
     };
 
     var internalRequest = function (req, res, options) {
-        Errors.forward(options.origin + "-request", req, options.events);
-        Errors.forward(options.origin + "-response", res, options.events);
-
         Headers.conditionMessage(req);
 
         var url = parseUrl(req);
@@ -110,11 +107,14 @@
             server = Http.createServer();
         }
 
-        Errors.forward(options.origin, server, options.events);
+        Errors.map(server, options.events, options.origin);
 
         server.address = options.address;
 
         server.on("request", function (req, res) {
+            Errors.map(req, options.events, options.origin + "-request");
+            Errors.map(res, options.events, options.origin + "-response");
+
             internalRequest(req, res, options);
         });
 
@@ -126,10 +126,10 @@
         var tunnelDataClosed = false;
         var tunnelData       = Net.connect(options.dataPath);
 
-        Errors.forward(
-            tunnelConnectOrigin + "-data",
+        Errors.map(
             tunnelData,
-            options.events
+            options.events,
+            tunnelConnectOrigin + "-data"
         );
 
         socket.write(
@@ -167,13 +167,13 @@
         var origin = tunnelConnectOrigin;
         var tunnel = Http.createServer();
 
-        Errors.forward(origin, tunnel, options.events);
+        Errors.map(tunnel, options.events, origin);
 
         tunnel.address = options.address;
 
         tunnel.on("connect", function (req, socket) {
-            Errors.forward(origin + "-request", req, options.events);
-            Errors.forward(origin + "-socket", socket, options.events);
+            Errors.map(req, options.events,origin + "-request");
+            Errors.map(socket, options.events, origin + "-socket");
             tunnelConnection(req, socket, options);
         });
 

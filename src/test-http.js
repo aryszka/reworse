@@ -85,7 +85,7 @@
 
     var send = function (message, dataChunks, clb) {
         dataChunks = dataChunks || [];
-        clb        = clb || function () {};
+        clb = clb || function () {};
 
         var chunkSends = dataChunks.map(function (chunk) {
             return function (clb) {
@@ -114,7 +114,7 @@
 
     var testServer = function (options, clb) {
         options = options || {};
-        clb     = clb || function () {};
+        clb = clb || function () {};
 
         options.port = options.port || (options.useTls ? httpsPort : httpPort);
 

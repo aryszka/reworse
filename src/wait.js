@@ -22,11 +22,11 @@
     };
 
     var waitForNext = function (calls) {
-        if (!calls.length) {
+        var call = calls.shift();
+        if (!call) {
             return;
         }
 
-        var call = calls.shift();
         call(function () {
             waitForNext(calls);
         });

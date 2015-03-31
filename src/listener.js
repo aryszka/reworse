@@ -50,9 +50,9 @@
     var listenFull = function (listener, port, clb) {
         if (listener.tlsCert === FakeCert) {
             Errors.emit(
-                "no tls certificate provided",
-                fakeCertificateOrigin,
-                listener.iface
+                listener.iface,
+                new Error("no tls certificate provided"),
+                fakeCertificateOrigin
             );
         }
 
@@ -102,9 +102,9 @@
 
         if (fileErr) {
             Errors.emit(
+                listener.iface,
                 fileErr,
-                httpFallbackOrigin,
-                listener.iface
+                httpFallbackOrigin
             );
 
             listenFallback(listener, port, clb);

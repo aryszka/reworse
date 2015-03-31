@@ -101,15 +101,14 @@
         var listener = Listener.createServer(options.listener);
         var prx      = Proxy.create();
 
-        Errors.handle("listener", listener, options.errorHandler);
-        Errors.handle("proxy", prx, options.errorHandler);
+        Errors.handle(listener, "listener", options.errorHandler);
+        Errors.handle(prx, "proxy", options.errorHandler);
 
         listener.on("request", function (req, res) {
-            if (applyFilters(filters, req, res)) {
-                return;
+            var handled = applyFilters(filters, req, res);
+            if (!handled) {
+                prx.handle(req, res);
             }
-
-            prx.handle(req, res);
         });
 
         listener.listen(options.port, function () {

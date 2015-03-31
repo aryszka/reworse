@@ -1,52 +1,34 @@
 (function () {
     "use strict";
 
-    var apply = function (f, args) {
-        f.apply(undefined, args);
+    var applyOrigin = function (err, origin) {
+        try {
+            err.origin = err.origin ? origin + ":" + err.origin : origin;
+        } catch (_) {}
     };
 
-    var handle = function (origin, emitter, handler) {
-        var args;
-        if (typeof handler === "function") {
-            args = [].slice.call(arguments, 3);
-        } else {
-            handler = console.error;
-            args = [].slice.call(arguments, 2);
-        }
-
-        emitter.on("error", function (err) {
-            apply(
-                handler,
-                [err, origin]
-                    .concat(args)
-                    .concat([].slice.call(arguments, 1))
-            );
+    var handle = function (source, origin, handler) {
+        handler = handler || console.error;
+        source.on("error", function (err) {
+            applyOrigin(err, origin);
+            handler(err, err.origin);
         });
     };
 
-    var emit = function (err, origin, collector) {
-        collector.emit.apply(
-            collector,
-            ["error", err, origin]
-                .concat([].slice.call(arguments, 3))
-        );
+    var emit = function (target, err, origin) {
+        applyOrigin(err, origin);
+        target.emit("error", err, origin);
     };
 
-    var forward = function (origin, emitter, collector) {
-        var args = [].slice.call(arguments, 3);
-        handle(origin, emitter, function (err, origin) {
-            apply(
-                emit,
-                [err, origin, collector]
-                    .concat(args)
-                    .concat([].slice.call(arguments, 2))
-            );
+    var map = function (source, target, origin) {
+        handle(source, origin, function (err) {
+            target.emit("error", err, origin);
         });
     };
 
     module.exports = {
-        emit:    emit,
-        forward: forward,
-        handle:  handle
+        emit:   emit,
+        handle: handle,
+        map:    map
     };
 })();
