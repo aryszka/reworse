@@ -1,6 +1,6 @@
 var gulp = require("gulp");
 
-var testGlob = "src/**/*.test.js";
+var testGlob = "lib/**/*.test.js";
 
 gulp.task("test", function () {
     var mocha = require("gulp-mocha");
@@ -16,7 +16,7 @@ gulp.task("test", function () {
 });
 
 gulp.task("run", function () {
-    require("./src/main");
+    require("./bin/reworse");
 });
 
 gulp.task("default", ["run"]);
