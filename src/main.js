@@ -4,6 +4,7 @@
     process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
     var Errors   = require("./errors");
+    var Filters  = require("./filters");
     var Flags    = require("flags");
     var Listener = require("./listener");
     var Path     = require("path");
@@ -57,36 +58,12 @@
     };
 
     var loadFilters = function (options) {
-        options.paths   = options.paths || [];
-        options.require = options.require || require;
-
-        var filters = [];
-
-        options.paths.map(function (path) {
-            path = Path.resolve(path);
-
-            var filter;
-            try {
-                filter = options.require(path);
-            } catch (err) {
-                console.error("invalid filter:", path, err);
-                process.exit(1);
-            }
-
-            filters.push(filter);
-        });
-
-        return filters;
-    };
-
-    var applyFilters = function (filters, req, res) {
-        var handled = false;
-
-        filters.map(function (filter) {
-            handled = filter(req, res, handled) || handled;
-        });
-
-        return handled;
+        try {
+            return Filters.load(options.paths, options.require);
+        } catch (err) {
+            console.error("invalid filter:", err);
+            process.exit(1);
+        }
     };
 
     var run = function (options, clb) {
@@ -105,7 +82,7 @@
         Errors.handle(proxy, "proxy", options.errorHandler);
 
         listener.on("request", function (req, res) {
-            var handled = applyFilters(filters, req, res);
+            var handled = Filters.apply(filters, req, res);
             if (!handled) {
                 proxy.forward(req, res);
             }
