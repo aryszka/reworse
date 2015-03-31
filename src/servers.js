@@ -77,7 +77,7 @@
         return server;
     };
 
-    var parseUrl = function (req) {
+    var applyFinalHost = function (req) {
         var url = Url.parse(req.url);
 
         if (req.headers.host) {
@@ -88,9 +88,7 @@
     };
 
     var internalRequest = function (req, res, options) {
-        Headers.conditionMessage(req);
-
-        var url = parseUrl(req);
+        var url = applyFinalHost(req);
         url.protocol = options.useTls ? "https:" : "http:";
         req.url = Url.format(url);
 

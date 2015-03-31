@@ -92,6 +92,32 @@ suite("proxy", function () {
         proxyRequests.removeAllListeners();
     });
 
+    test("conditions request headers", function (done) {
+        var proxy = Proxy.create();
+
+        var rawHeaders = [
+            "some-Header-0",    "some value 0",
+            "Some-header-1",    "some value 1",
+            "Proxy-Connection", "close"
+        ];
+
+        var req = testRequest({rawHeaders: rawHeaders});
+
+        proxyRequests.on("request", function (preq) {
+            var canonical = Headers.canonicalHeaders(rawHeaders);
+            canonical = canonical.slice(0, 4);
+            canonical = Headers.mapRaw(canonical);
+
+            assert(Object.keys(preq.options.headers).every(function (header) {
+                return header in canonical;
+            }));
+
+            done();
+        });
+
+        proxy.forward(req, testResponse());
+    });
+
     test("maps non-tls to non-tls requests", function (done) {
         var proxy = Proxy.create();
         var req   = testRequest({url: "http://test-url"});

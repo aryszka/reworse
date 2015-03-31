@@ -343,26 +343,6 @@ suite("servers", function () {
         response.emit("error", testError);
     });
 
-    test("internal server conditions headers", function (done) {
-        var conditionMessage = Headers.conditionMessage;
-        var events           = new Events.EventEmitter;
-        var request          = new Events.EventEmitter;
-        var called           = false;
-        var server           = Servers.createInternalHttp({events: events});
-
-        Headers.conditionMessage = function (req) {
-            Headers.conditionMessage = conditionMessage;
-            assert(req === request);
-            done();
-        };
-
-        request.rawHeaders = [];
-        request.headers    = {};
-        request.url        = "";
-
-        server.emit("request", request, new Events.EventEmitter);
-    });
-
     test("internal server ensures request protocol when no tls", function (done) {
         var events  = new Events.EventEmitter;
         var request = new Events.EventEmitter;

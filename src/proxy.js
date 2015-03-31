@@ -120,6 +120,8 @@
     };
 
     var forward = function (proxy, req, res) {
+        Headers.conditionMessage(req);
+
         var preq = mapRequest(proxy, req);
 
         preq.on("error", function (err) {
