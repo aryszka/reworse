@@ -99,15 +99,15 @@
 
         var filters  = loadFilters(options.filters);
         var listener = Listener.createServer(options.listener);
-        var prx      = Proxy.create();
+        var proxy    = Proxy.create();
 
         Errors.handle(listener, "listener", options.errorHandler);
-        Errors.handle(prx, "proxy", options.errorHandler);
+        Errors.handle(proxy, "proxy", options.errorHandler);
 
         listener.on("request", function (req, res) {
             var handled = applyFilters(filters, req, res);
             if (!handled) {
-                prx.handle(req, res);
+                proxy.forward(req, res);
             }
         });
 

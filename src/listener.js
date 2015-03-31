@@ -36,7 +36,7 @@
     };
 
     var listenOnAll = function (servers, clb) {
-        Wait.forAll(servers.map(function (server) {
+        Wait.parallel(servers.map(function (server) {
             return function (clb) {
                 server.listen(server.address, clb);
             };
@@ -115,7 +115,7 @@
     };
 
     var closeAll = function (servers, clb) {
-        Wait.forAll(servers.map(function (server) {
+        Wait.parallel(servers.map(function (server) {
             return function (clb) {
                 server.close(clb);
             };

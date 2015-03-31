@@ -103,7 +103,7 @@
             });
         };
 
-        Wait.forNext(chunkSends.concat(done));
+        Wait.serial(chunkSends.concat(done));
     };
 
     var sendResponse = function (res, headers, dataChunks, clb) {

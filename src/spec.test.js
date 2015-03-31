@@ -22,7 +22,7 @@ suite("reworse", function () {
         };
 
         var close = function (clb) {
-            Wait.forAll([
+            Wait.parallel([
                 http.close.bind(http),
                 reworse.close.bind(reworse)
             ], clb);
@@ -36,7 +36,7 @@ suite("reworse", function () {
             });
         };
 
-        Wait.forAll([startHttp, startReworse], onStarted);
+        Wait.parallel([startHttp, startReworse], onStarted);
     };
 
     var reworseErrorHandler = function (err, origin, subOrigin) {
@@ -156,7 +156,7 @@ suite("reworse", function () {
         };
 
         var makeRequests = function (clb) {
-            Wait.forAll(postDataChunks.map(makeRequest), clb);
+            Wait.parallel(postDataChunks.map(makeRequest), clb);
         };
 
         var onStarted = function (servers) {

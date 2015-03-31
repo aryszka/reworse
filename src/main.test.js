@@ -41,7 +41,7 @@ suite("main", function () {
             var proxy = new Events.EventEmitter;
 
             proxy.options = options;
-            proxy.handle  = noop;
+            proxy.forward  = noop;
 
             if (onCreate) {
                 onCreate(proxy);
@@ -232,7 +232,7 @@ suite("main", function () {
         });
 
         mockProxy(function (proxy) {
-            proxy.handle = function (req, res) {
+            proxy.forward = function (req, res) {
                 assert(req === request);
                 assert(res === response);
 
@@ -270,7 +270,7 @@ suite("main", function () {
         });
 
         mockProxy(function (proxy) {
-            proxy.handle = function (req, res) {
+            proxy.forward = function (req, res) {
                 assert(req === request);
                 assert(res === response);
 
@@ -314,7 +314,7 @@ suite("main", function () {
         });
 
         mockProxy(function (proxy) {
-            proxy.handle = function () {
+            proxy.forward = function () {
                 assert(false);
             };
         });

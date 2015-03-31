@@ -101,7 +101,7 @@ suite("proxy", function () {
             done();
         });
 
-        proxy.handle(req, testResponse());
+        proxy.forward(req, testResponse());
     });
 
     test("maps tls to tls requests", function (done) {
@@ -113,7 +113,7 @@ suite("proxy", function () {
             done();
         });
 
-        proxy.handle(req, testResponse());
+        proxy.forward(req, testResponse());
     });
 
     test("maps request method", function (done) {
@@ -125,7 +125,7 @@ suite("proxy", function () {
             done();
         });
 
-        proxy.handle(req, testResponse());
+        proxy.forward(req, testResponse());
     });
 
     test("maps request url", function (done) {
@@ -143,7 +143,7 @@ suite("proxy", function () {
             done();
         });
 
-        proxy.handle(req, testResponse());
+        proxy.forward(req, testResponse());
     });
 
     test("maps request headers", function (done) {
@@ -164,7 +164,7 @@ suite("proxy", function () {
             done();
         });
 
-        proxy.handle(req, testResponse());
+        proxy.forward(req, testResponse());
     });
 
     test("maps request errors to proxy", function (done) {
@@ -181,7 +181,7 @@ suite("proxy", function () {
             done();
         });
 
-        proxy.handle(req, testResponse());
+        proxy.forward(req, testResponse());
     });
 
     test("copies data until content length", function (done) {
@@ -209,7 +209,7 @@ suite("proxy", function () {
             req.emit("data", new Buffer("3"));
         });
 
-        proxy.handle(req, testResponse());
+        proxy.forward(req, testResponse());
     });
 
     test("copies data until end received", function (done) {
@@ -238,7 +238,7 @@ suite("proxy", function () {
             req.emit("data", new Buffer("3"));
         });
 
-        proxy.handle(req, testResponse());
+        proxy.forward(req, testResponse());
     });
 
     test("does not copy data if not PUT or POST (todo!!!)", function (done) {
@@ -254,7 +254,7 @@ suite("proxy", function () {
             done();
         });
 
-        proxy.handle(req, testResponse());
+        proxy.forward(req, testResponse());
     });
 
     test("response teapot on request error", function (done) {
@@ -272,7 +272,7 @@ suite("proxy", function () {
         });
 
         proxy.on("error", function () {});
-        proxy.handle(req, res);
+        proxy.forward(req, res);
     });
 
     test("maps response errors to proxy", function (done) {
@@ -295,7 +295,7 @@ suite("proxy", function () {
             done();
         });
 
-        proxy.handle(req, res);
+        proxy.forward(req, res);
     });
 
     test("conditions response headers", function (done) {
@@ -324,7 +324,7 @@ suite("proxy", function () {
             done();
         });
 
-        proxy.handle(req, res);
+        proxy.forward(req, res);
     });
 
     test("finishes response if no content", function (done) {
@@ -341,7 +341,7 @@ suite("proxy", function () {
             done();
         });
 
-        proxy.handle(req, res);
+        proxy.forward(req, res);
     });
 
     test("finishes response if status 204", function (done) {
@@ -358,7 +358,7 @@ suite("proxy", function () {
             done();
         });
 
-        proxy.handle(req, res);
+        proxy.forward(req, res);
     });
 
     test("finishes response if status 205", function (done) {
@@ -375,7 +375,7 @@ suite("proxy", function () {
             done();
         });
 
-        proxy.handle(req, res);
+        proxy.forward(req, res);
     });
 
     test("finishes response if status 304", function (done) {
@@ -392,7 +392,7 @@ suite("proxy", function () {
             done();
         });
 
-        proxy.handle(req, res);
+        proxy.forward(req, res);
     });
 
     test("finishes response on response end", function (done) {
@@ -410,6 +410,6 @@ suite("proxy", function () {
             done();
         });
 
-        proxy.handle(req, res);
+        proxy.forward(req, res);
     });
 });

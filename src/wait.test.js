@@ -5,7 +5,7 @@ suite("wait", function () {
     var Wait = require("./wait");
 
     test("doesn't wait when no calls to wait for", function (done) {
-        Wait.forAll([], done);
+        Wait.parallel([], done);
     });
 
     test("waits for synchronous calls", function (done) {
@@ -13,7 +13,7 @@ suite("wait", function () {
             clb();
         };
 
-        Wait.forAll([reclb, reclb], done);
+        Wait.parallel([reclb, reclb], done);
     });
 
     test("waits for asynchronous calls", function (done) {
@@ -21,7 +21,7 @@ suite("wait", function () {
             setTimeout(clb);
         };
 
-        Wait.forAll([reclb, reclb], done);
+        Wait.parallel([reclb, reclb], done);
     });
 
     test("waits for mixed calls", function (done) {
@@ -33,11 +33,11 @@ suite("wait", function () {
             setTimeout(clb);
         };
 
-        Wait.forAll([sreclb, areclb], done);
+        Wait.parallel([sreclb, areclb], done);
     });
 
     test("doesn't wait when no calls to execute", function () {
-        Wait.forNext([]);
+        Wait.serial([]);
     });
 
     test("calls synchronous calls in order", function (done) {
@@ -64,7 +64,7 @@ suite("wait", function () {
             done();
         };
 
-        Wait.forNext([firstCall, secondCall, clb]);
+        Wait.serial([firstCall, secondCall, clb]);
     });
 
     test("calls asynchronous calls in order", function (done) {
@@ -91,6 +91,6 @@ suite("wait", function () {
             setTimeout(done);
         };
 
-        Wait.forNext([firstCall, secondCall, clb]);
+        Wait.serial([firstCall, secondCall, clb]);
     });
 });

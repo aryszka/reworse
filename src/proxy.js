@@ -119,7 +119,7 @@
         }
     };
 
-    var handle = function (proxy, req, res) {
+    var forward = function (proxy, req, res) {
         var preq = mapRequest(proxy, req);
 
         preq.on("error", function (err) {
@@ -135,8 +135,8 @@
     var create = function () {
         var proxy = new Events.EventEmitter;
 
-        proxy.handle = function (req, res) {
-            handle(proxy, req, res);
+        proxy.forward = function (req, res) {
+            forward(proxy, req, res);
         };
 
         return proxy;

@@ -1,7 +1,7 @@
 (function () {
     "use strict";
 
-    var waitForAll = function (calls, clb) {
+    var parallel = function (calls, clb) {
         var callsCount = calls.length;
 
         var clbi = function () {
@@ -21,19 +21,19 @@
         });
     };
 
-    var waitForNext = function (calls) {
+    var serial = function (calls) {
         var call = calls.shift();
         if (!call) {
             return;
         }
 
         call(function () {
-            waitForNext(calls);
+            serial(calls);
         });
     };
 
     module.exports = {
-        forAll:  waitForAll,
-        forNext: waitForNext
+        parallel: parallel,
+        serial:   serial
     };
 })();
