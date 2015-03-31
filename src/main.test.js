@@ -189,7 +189,6 @@ suite("main", function () {
         });
 
         mockStderr(function (msg, origin) {
-            console.log(msg, origin);
             assert(msg === testError);
             assert(origin === "listener");
 

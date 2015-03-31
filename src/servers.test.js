@@ -10,6 +10,49 @@ suite("servers", function () {
     var Net      = require("net");
     var Servers  = require("./servers");
 
+    var connect;
+    var httpCreateServer;
+    var httpsCreateServer;
+
+    var noop = function () {};
+
+    var testSocket = function () {
+        var socket = new Events.EventEmitter;
+
+        socket.write   = noop;
+        socket.end     = noop;
+        socket.destroy = noop;
+
+        socket.pipe = function (s) {
+            socket.pipedTo = s;
+            socket.emit("piped", s);
+        };
+
+        return socket;
+    };
+
+    var testRequest = function () {
+        var request = new Events.EventEmitter;
+
+        request.rawHeaders = [];
+        request.headers    = {};
+        request.url        = "";
+
+        return request;
+    };
+
+    setup(function () {
+        connect           = Net.connect;
+        httpCreateServer  = Http.createServer;
+        httpsCreateServer = Https.createServer;
+    });
+
+    teardown(function () {
+        Net.connect        = connect;
+        Http.createServer  = httpCreateServer;
+        Https.createServer = httpsCreateServer;
+    });
+
     test("external server forwards errors", function (done) {
         var events    = new Events.EventEmitter;
         var server    = Servers.createExternalServer({events: events});
@@ -26,7 +69,7 @@ suite("servers", function () {
 
     test("external server forwards connection errors", function (done) {
         var events    = new Events.EventEmitter;
-        var socket    = new Events.EventEmitter;
+        var socket    = testSocket();
         var server    = Servers.createExternalServer({events: events});
         var testError = "test error";
 
@@ -48,14 +91,11 @@ suite("servers", function () {
     });
 
     test("external server relays tunnel connect", function (done) {
-        var connect            = Net.connect;
         var data               = new Buffer("CONNECT");
         var events             = new Events.EventEmitter;
         var testPath           = "test-path";
-        var socket             = new Events.EventEmitter;
-        var relaySocket        = new Events.EventEmitter;
-        var socketPiped        = false;
-        var relaySocketPiped   = false;
+        var socket             = testSocket();
+        var relaySocket        = testSocket();
         var initialWriteCalled = false;
 
         var options = {
@@ -65,24 +105,17 @@ suite("servers", function () {
 
         var server = Servers.createExternalServer(options);
 
-        var pipe = function (s) {
-            if (s === socket) {
-                socketPiped = true;
-            }
-
-            if (s === relaySocket) {
-                relaySocketPiped = true;
-            }
-
-            if (socketPiped && relaySocketPiped) {
-                Net.connect = connect;
+        var onPiped = function () {
+            assert(!socket.pipedTo || socket.pipedTo === relaySocket);
+            assert(!relaySocket.pipedTo || relaySocket.pipedTo === socket);
+            if (socket.pipedTo && relaySocket.pipedTo) {
                 assert(initialWriteCalled);
                 done();
             }
         };
 
-        socket.pipe      = pipe;
-        relaySocket.pipe = pipe;
+        socket.on("piped", onPiped);
+        relaySocket.on("piped", onPiped);
 
         relaySocket.write = function (d) {
             initialWriteCalled = true;
@@ -99,14 +132,11 @@ suite("servers", function () {
     });
 
     test("external server relays tls connections", function (done) {
-        var connect            = Net.connect;
         var data               = new Buffer([22, 23, 23]);
         var events             = new Events.EventEmitter;
         var testPath           = "test-path";
-        var socket             = new Events.EventEmitter;
-        var relaySocket        = new Events.EventEmitter;
-        var socketPiped        = false;
-        var relaySocketPiped   = false;
+        var socket             = testSocket();
+        var relaySocket        = testSocket();
         var initialWriteCalled = false;
 
         var options = {
@@ -116,24 +146,17 @@ suite("servers", function () {
 
         var server = Servers.createExternalServer(options);
 
-        var pipe = function (s) {
-            if (s === socket) {
-                socketPiped = true;
-            }
-
-            if (s === relaySocket) {
-                relaySocketPiped = true;
-            }
-
-            if (socketPiped && relaySocketPiped) {
-                Net.connect = connect;
+        var onPiped = function () {
+            assert(!socket.pipedTo || socket.pipedTo === relaySocket);
+            assert(!relaySocket.pipedTo || relaySocket.pipedTo === socket);
+            if (socket.pipedTo && relaySocket.pipedTo) {
                 assert(initialWriteCalled);
                 done();
             }
         };
 
-        socket.pipe      = pipe;
-        relaySocket.pipe = pipe;
+        socket.on("piped", onPiped);
+        relaySocket.on("piped", onPiped);
 
         relaySocket.write = function (d) {
             initialWriteCalled = true;
@@ -150,14 +173,11 @@ suite("servers", function () {
     });
 
     test("external server relays non tls connections", function (done) {
-        var connect            = Net.connect;
         var data               = new Buffer("123");
         var events             = new Events.EventEmitter;
         var testPath           = "test-path";
-        var socket             = new Events.EventEmitter;
-        var relaySocket        = new Events.EventEmitter;
-        var socketPiped        = false;
-        var relaySocketPiped   = false;
+        var socket             = testSocket();
+        var relaySocket        = testSocket();
         var initialWriteCalled = false;
 
         var options = {
@@ -167,24 +187,17 @@ suite("servers", function () {
 
         var server = Servers.createExternalServer(options);
 
-        var pipe = function (s) {
-            if (s === socket) {
-                socketPiped = true;
-            }
-
-            if (s === relaySocket) {
-                relaySocketPiped = true;
-            }
-
-            if (socketPiped && relaySocketPiped) {
-                Net.connect = connect;
+        var onPiped = function () {
+            assert(!socket.pipedTo || socket.pipedTo === relaySocket);
+            assert(!relaySocket.pipedTo || relaySocket.pipedTo === socket);
+            if (socket.pipedTo && relaySocket.pipedTo) {
                 assert(initialWriteCalled);
                 done();
             }
         };
 
-        socket.pipe      = pipe;
-        relaySocket.pipe = pipe;
+        socket.on("piped", onPiped);
+        relaySocket.on("piped", onPiped);
 
         relaySocket.write = function (d) {
             initialWriteCalled = true;
@@ -201,12 +214,10 @@ suite("servers", function () {
     });
 
     test("external server forwards relay socket errors", function (done) {
-        var connect       = Net.connect;
         var events        = new Events.EventEmitter;
-        var socket        = new Events.EventEmitter;
-        var forwardSocket = new Events.EventEmitter;
+        var socket        = testSocket();
+        var forwardSocket = testSocket();
         var testError     = "test error";
-        var noop          = function () {};
 
         var options = {
             events:      events,
@@ -215,17 +226,11 @@ suite("servers", function () {
 
         var server = Servers.createExternalServer(options);
 
-        socket.pipe         = noop;
-        forwardSocket.pipe  = noop;
-        forwardSocket.write = noop;
-
         Net.connect = function (address) {
             return forwardSocket;
         };
 
         events.on("error", function (err, origin) {
-            Net.connect = connect;
-
             assert(err === testError);
             assert(origin.indexOf(Servers.externalServerOrigin) === 0);
 
@@ -238,8 +243,7 @@ suite("servers", function () {
     });
 
     test("internal server does not use tls by default", function () {
-        var createServer = Http.createServer;
-        var httpServer   = new Events.EventEmitter;
+        var httpServer = new Events.EventEmitter;
 
         Http.createServer = function () {
             return httpServer;
@@ -247,12 +251,10 @@ suite("servers", function () {
 
         var server = Servers.createInternalHttp();
         assert(server === httpServer);
-        Http.createServer = createServer;
     });
 
     test("internal server uses tls when specified", function () {
-        var createServer = Https.createServer;
-        var httpsServer  = new Events.EventEmitter;
+        var httpsServer = new Events.EventEmitter;
 
         Https.createServer = function () {
             return httpsServer;
@@ -260,7 +262,6 @@ suite("servers", function () {
 
         var server = Servers.createInternalHttp({useTls: true});
         assert(server === httpsServer);
-        Https.createServer = createServer;
     });
 
     test("internal server forwards errors", function (done) {
@@ -294,16 +295,12 @@ suite("servers", function () {
         var testError  = "test error";
         var testOrigin = "test origin";
         var events     = new Events.EventEmitter;
-        var request    = new Events.EventEmitter;
+        var request    = testRequest();
 
         var server = Servers.createInternalHttp({
             events: events,
             origin: testOrigin
         });
-
-        request.rawHeaders = [];
-        request.headers    = {};
-        request.url        = "";
 
         events.on("error", function (err, origin) {
             assert(err === testError);
@@ -320,17 +317,13 @@ suite("servers", function () {
         var testError  = "test error";
         var testOrigin = "test origin";
         var events     = new Events.EventEmitter;
-        var request    = new Events.EventEmitter;
+        var request    = testRequest();
         var response   = new Events.EventEmitter;
 
         var server = Servers.createInternalHttp({
             events: events,
             origin: testOrigin
         });
-
-        request.rawHeaders = [];
-        request.headers    = {};
-        request.url        = "";
 
         events.on("error", function (err, origin) {
             assert(err === testError);
@@ -345,13 +338,9 @@ suite("servers", function () {
 
     test("internal server ensures request protocol when no tls", function (done) {
         var events  = new Events.EventEmitter;
-        var request = new Events.EventEmitter;
+        var request = testRequest();
         var called  = false;
         var server  = Servers.createInternalHttp({events: events});
-
-        request.rawHeaders = [];
-        request.headers    = {};
-        request.url        = "";
 
         events.on("request", function () {
             assert(request.url.indexOf("http:") === 0);
@@ -363,7 +352,7 @@ suite("servers", function () {
 
     test("internal server ensures request protocol when tls", function (done) {
         var events  = new Events.EventEmitter;
-        var request = new Events.EventEmitter;
+        var request = testRequest();
         var called  = false;
 
         var server = Servers.createInternalHttp({
@@ -371,10 +360,6 @@ suite("servers", function () {
             useTls:  true,
             tlsCert: FakeCert
         });
-
-        request.rawHeaders = [];
-        request.headers    = {};
-        request.url        = "";
 
         events.on("request", function () {
             assert(request.url.indexOf("https:") === 0);
@@ -386,14 +371,10 @@ suite("servers", function () {
 
     test("internal server forwards requests", function (done) {
         var events   = new Events.EventEmitter;
-        var request  = new Events.EventEmitter;
+        var request  = testRequest();
         var response = new Events.EventEmitter;
         var called   = false;
         var server   = Servers.createInternalHttp({events:  events});
-
-        request.rawHeaders = [];
-        request.headers    = {};
-        request.url        = "";
 
         events.on("request", function (req, res) {
             assert(req === request);
@@ -427,27 +408,18 @@ suite("servers", function () {
     });
 
     test("tunnel connect forwards connect errors", function (done) {
-        var connect    = Net.connect;
         var events     = new Events.EventEmitter;
-        var request    = new Events.EventEmitter;
-        var tunnelData = new Events.EventEmitter;
-        var socket     = new Events.EventEmitter;
+        var request    = testRequest();
+        var tunnelData = testSocket();
+        var socket     = testSocket();
         var testError  = "test error";
         var tunnel     = Servers.createTunnelConnect({events: events});
-        var noop       = function () {};
-
-        socket.write     = noop;
-        socket.end       = noop;
-        tunnelData.write = noop;
-        tunnelData.end   = noop;
 
         Net.connect = function () {
             return tunnelData;
         };
 
         events.on("error", function (err, origin) {
-            Net.connect = connect;
-
             assert(err === testError);
             assert(origin.indexOf(Servers.tunnelConnectOrigin) === 0);
 
@@ -459,27 +431,18 @@ suite("servers", function () {
     });
 
     test("tunnel connect forwards socket errors", function (done) {
-        var connect    = Net.connect;
         var events     = new Events.EventEmitter;
-        var request    = new Events.EventEmitter;
-        var tunnelData = new Events.EventEmitter;
-        var socket     = new Events.EventEmitter;
+        var request    = testRequest();
+        var tunnelData = testSocket();
+        var socket     = testSocket();
         var testError  = "test error";
         var tunnel     = Servers.createTunnelConnect({events: events});
-        var noop       = function () {};
-
-        socket.write     = noop;
-        socket.end       = noop;
-        tunnelData.write = noop;
-        tunnelData.end   = noop;
 
         Net.connect = function () {
             return tunnelData;
         };
 
         events.on("error", function (err, origin) {
-            Net.connect = connect;
-
             assert(err === testError);
             assert(origin.indexOf(Servers.tunnelConnectOrigin) === 0);
 
@@ -491,27 +454,18 @@ suite("servers", function () {
     });
 
     test("tunnel connect forwards tunnel data errors", function (done) {
-        var connect    = Net.connect;
         var events     = new Events.EventEmitter;
-        var request    = new Events.EventEmitter;
-        var tunnelData = new Events.EventEmitter;
-        var socket     = new Events.EventEmitter;
+        var request    = testRequest();
+        var tunnelData = testSocket();
+        var socket     = testSocket();
         var testError  = "test error";
         var tunnel     = Servers.createTunnelConnect({events: events});
-        var noop       = function () {};
-
-        socket.write     = noop;
-        socket.end       = noop;
-        tunnelData.write = noop;
-        tunnelData.end   = noop;
 
         Net.connect = function () {
             return tunnelData;
         };
 
         events.on("error", function (err, origin) {
-            Net.connect = connect;
-
             assert(err === testError);
             assert(origin.indexOf(Servers.tunnelConnectOrigin) === 0);
 
@@ -523,25 +477,17 @@ suite("servers", function () {
     });
 
     test("tunnel connect responds connection established", function (done) {
-        var connect    = Net.connect;
         var events     = new Events.EventEmitter;
-        var request    = new Events.EventEmitter;
-        var tunnelData = new Events.EventEmitter;
-        var socket     = new Events.EventEmitter;
+        var request    = testRequest();
+        var tunnelData = testSocket();
+        var socket     = testSocket();
         var tunnel     = Servers.createTunnelConnect({events: events});
-        var noop       = function () {};
-
-        socket.end       = noop;
-        tunnelData.write = noop;
-        tunnelData.end   = noop;
 
         Net.connect = function () {
             return tunnelData;
         };
 
         socket.write = function (data) {
-            Net.connect = connect;
-
             assert(
                 data.toString() ===
                 "HTTP/1.1 200 Connection established\r\n" +
@@ -555,17 +501,11 @@ suite("servers", function () {
     });
 
     test("tunnel connect does not write on data when it is closed", function () {
-        var connect    = Net.connect;
         var events     = new Events.EventEmitter;
-        var request    = new Events.EventEmitter;
-        var tunnelData = new Events.EventEmitter;
-        var socket     = new Events.EventEmitter;
+        var request    = testRequest();
+        var tunnelData = testSocket();
+        var socket     = testSocket();
         var tunnel     = Servers.createTunnelConnect({events: events});
-        var noop       = function () {};
-
-        socket.write     = noop;
-        socket.end       = noop;
-        tunnelData.end   = noop;
 
         Net.connect = function () {
             return tunnelData;
@@ -578,31 +518,20 @@ suite("servers", function () {
         tunnel.emit("connect", request, socket);
         tunnelData.emit("end");
         socket.emit("data", new Buffer("123"));
-
-        Net.connect = connect;
     });
 
     test("tunnel connect does not write on socket when it is closed", function (done) {
-        var connect    = Net.connect;
         var events     = new Events.EventEmitter;
-        var request    = new Events.EventEmitter;
-        var tunnelData = new Events.EventEmitter;
-        var socket     = new Events.EventEmitter;
+        var request    = testRequest();
+        var tunnelData = testSocket();
+        var socket     = testSocket();
         var tunnel     = Servers.createTunnelConnect({events: events});
-        var noop       = function () {};
-
-        socket.end       = noop;
-        socket.destroy   = noop;
-        tunnelData.write = noop;
-        tunnelData.end   = noop;
 
         Net.connect = function () {
             return tunnelData;
         };
 
         socket.write = function (data) {
-            Net.connect = connect;
-
             assert(
                 data.toString() ===
                 "HTTP/1.1 200 Connection established\r\n" +
@@ -618,25 +547,18 @@ suite("servers", function () {
     });
 
     test("tunnel connect copies request data to tunnel data", function (done) {
-        var connect    = Net.connect;
         var data       = new Buffer("123");
         var events     = new Events.EventEmitter;
-        var request    = new Events.EventEmitter;
-        var tunnelData = new Events.EventEmitter;
-        var socket     = new Events.EventEmitter;
+        var request    = testRequest();
+        var tunnelData = testSocket();
+        var socket     = testSocket();
         var tunnel     = Servers.createTunnelConnect({events: events});
-        var noop       = function () {};
-
-        socket.write     = noop;
-        socket.end       = noop;
-        tunnelData.end   = noop;
 
         Net.connect = function () {
             return tunnelData;
         };
 
         tunnelData.write = function (d) {
-            Net.connect = connect;
             assert(d === data);
             done();
         };
@@ -646,18 +568,12 @@ suite("servers", function () {
     });
 
     test("tunnel connect copies response data to socket", function (done) {
-        var connect    = Net.connect;
         var data       = new Buffer("123");
         var events     = new Events.EventEmitter;
-        var request    = new Events.EventEmitter;
-        var tunnelData = new Events.EventEmitter;
-        var socket     = new Events.EventEmitter;
+        var request    = testRequest();
+        var tunnelData = testSocket();
+        var socket     = testSocket();
         var tunnel     = Servers.createTunnelConnect({events: events});
-        var noop       = function () {};
-
-        socket.end       = noop;
-        tunnelData.write = noop;
-        tunnelData.end   = noop;
 
         Net.connect = function () {
             return tunnelData;
@@ -672,7 +588,6 @@ suite("servers", function () {
                 return;
             }
 
-            Net.connect = connect;
             assert(d === data);
             done();
         };
@@ -682,26 +597,18 @@ suite("servers", function () {
     });
 
     test("tunnel connect closes data on socket end", function (done) {
-        var connect    = Net.connect;
         var data       = new Buffer("123");
         var events     = new Events.EventEmitter;
-        var request    = new Events.EventEmitter;
-        var tunnelData = new Events.EventEmitter;
-        var socket     = new Events.EventEmitter;
+        var request    = testRequest();
+        var tunnelData = testSocket();
+        var socket     = testSocket();
         var tunnel     = Servers.createTunnelConnect({events: events});
-        var noop       = function () {};
-
-        socket.write     = noop;
-        socket.end       = noop;
-        socket.destroy   = noop;
-        tunnelData.write = noop;
 
         Net.connect = function () {
             return tunnelData;
         };
 
         tunnelData.end = function () {
-            Net.connect = connect;
             done();
         };
 
@@ -712,26 +619,18 @@ suite("servers", function () {
     test("tunnel connect destroys socket on socket end", function (done) {
         // otherwise unable to close nodejs server
 
-        var connect    = Net.connect;
         var data       = new Buffer("123");
         var events     = new Events.EventEmitter;
-        var request    = new Events.EventEmitter;
-        var tunnelData = new Events.EventEmitter;
-        var socket     = new Events.EventEmitter;
+        var request    = testRequest();
+        var tunnelData = testSocket();
+        var socket     = testSocket();
         var tunnel     = Servers.createTunnelConnect({events: events});
-        var noop       = function () {};
-
-        socket.write     = noop;
-        socket.end       = noop;
-        tunnelData.write = noop;
-        tunnelData.end   = noop;
 
         Net.connect = function () {
             return tunnelData;
         };
 
         socket.destroy = function () {
-            Net.connect = connect;
             done();
         };
 

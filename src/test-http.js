@@ -132,7 +132,11 @@
             req.on("end", function () {
                 server.emit("requestcomplete", req, res, Buffer.concat(receivedData));
                 if (!options.autoResponseDisabled) {
-                    sendResponse(res, options.headers, options.dataChunks || receivedData);
+                    var dataChunks = receivedData;
+                    if (options.dataChunks && options.dataChunks.length) {
+                        dataChunks = options.dataChunks;
+                    }
+                    sendResponse(res, options.headers, dataChunks);
                 }
             });
         });
@@ -213,8 +217,12 @@
         return Buffer.concat(chunks).toString();
     };
 
+    var compareData = function (chunks0, chunks1) {
+        return chunksToString(chunks0) === chunksToString(chunks1);
+    };
+
     var assertData = function (chunks0, chunks1) {
-        assert(chunksToString(chunks0) === chunksToString(chunks1));
+        assert(compareData(chunks0, chunks1));
     };
 
     var assertPath = function (url, path) {
@@ -222,12 +230,14 @@
     };
 
     module.exports = {
-        assertData:    assertData,
-        assertHeaders: assertHeaders,
-        assertPath:    assertPath,
-        request:       testRequest,
-        reworsePort:   reworsePort,
-        send:          send,
-        server:        testServer
+        assertData:     assertData,
+        assertHeaders:  assertHeaders,
+        assertPath:     assertPath,
+        compareData:    compareData,
+        contentHeaders: contentHeaders,
+        request:        testRequest,
+        reworsePort:    reworsePort,
+        send:           send,
+        server:         testServer
     };
 })();
