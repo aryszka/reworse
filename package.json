@@ -11,7 +11,7 @@
     "test": "gulp test"
   },
   "author": "Arpad Ryszka <arpad.ryszka@gmail.com>",
-  "contributors": ["Andrey Kuzmin"]
+  "contributors": ["Andrey Kuzmin"],
   "license": "MIT",
   "devDependencies": {
     "gulp": "^3.8.11",
