@@ -1,14 +1,18 @@
 # Reworse
 
-A javascript proxy with filtering.
+An HTTP proxy with filtering in javascript.
+
+## Installation
+
+E.g:
+
+```
+npm install --global reworse
+```
+
+This will install reworse as a global command.
 
 ## Usage
-
-### Installation
-
-```
-npm i reworse -g
-```
 
 ### Starting the proxy
 
@@ -17,6 +21,51 @@ In your terminal, call:
 ```
 reworse
 ```
+
+### Startup options
+
+#### Port:
+
+```
+--port <port>
+```
+
+Port that the proxy will listen on. Default: 9000.
+
+#### Filters:
+
+```
+--filter filter0.js --filter filter1.js
+```
+
+Each filter listed that has to be loaded. See more below about filters.
+
+#### Socket directory:
+
+```
+--socket-dir /path/to/directory
+```
+
+Directory where the internal socket files will be created. Default: .tmp.
+
+#### Verbose mode:
+
+```
+--verbose
+```
+
+Enable verbose mode.
+
+#### Tls key and certification:
+
+```
+--tls-key /path/to/key --tls-cert /path/to/cert
+
+To be able to manipulate HTTPS requests, reworse provides its own certificate
+acting as the original host. To do so, it needs an RSA certificate that the
+clients need to accept. These two options should be use to set the RSA key
+and the certificate. (By default, reworse uses a hard-coded, self signed,
+fake certificate for test purposes!)
 
 ### Starting the proxy with one or more filters
 
