@@ -60,6 +60,7 @@ Enable verbose mode.
 
 ```
 --tls-key /path/to/key --tls-cert /path/to/cert
+```
 
 To be able to manipulate HTTPS requests, reworse provides its own certificate
 acting as the original host. To do so, it needs an RSA certificate that the

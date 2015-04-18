@@ -1,15 +1,17 @@
 {
   "name": "reworse",
+  "url": "https://github.com/aryszka/reworse",
   "version": "1.0.0",
-  "description": "primitive reverse proxy",
-  "main": "src/main.js",
+  "description": "primitive reverse proxy with filtering in javascript",
+  "main": "lib/index.js",
   "bin": {
     "reworse": "./bin/reworse.js"
   },
   "scripts": {
     "test": "gulp test"
   },
-  "author": "",
+  "author": "Arpad Ryszka <arpad.ryszka@gmail.com>",
+  "contributors": ["Andrey Kuzmin"]
   "license": "MIT",
   "devDependencies": {
     "gulp": "^3.8.11",
@@ -17,5 +19,18 @@
   },
   "dependencies": {
     "flags": "^0.1.2"
-  }
+  },
+  "keywords": [
+    "proxy",
+    "filters",
+    "javascript"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aryszka/reworse"
+  },
+  "bugs": {
+    "url": "https://github.com/aryszka/reworse"
+  },
+  "homepage": "https://github.com/aryszka/reworse"
 }
