@@ -1,3 +1,5 @@
+**This repository is not maintained and is targeting an outdated version of the Node.js platform.**
+
 # Reworse
 
 An HTTP proxy with filtering in javascript.
